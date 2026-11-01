@@ -33,7 +33,7 @@ DeepSeek Harness（DSH）插件与工具目录，收录 20000+ 个仓库，每�
 收录是自动的，另外有两条主动通道：
 
 - 站内 **[提交插件](https://shelfry.app/submit)**：填上仓库地址即可，审核后会出现在目录里
-- GitHub Issue：**[新建 Issue](https://github.com/shelfry/dsh-shelfry/issues/new)**，标题以 `[插件提交]` 开头，正文写清仓库地址与安装方式，会自动同步进待审核列表
+- GitHub Issue：**[新建 Issue](https://github.com/shelfry/shelfry-web/issues/new)**，标题以 `[插件提交]` 开头，正文写清仓库地址与安装方式，会自动同步进待审核列表
 
 收录标准：上游仓库需明确写出 `dsh add` / `dsh install` 安装规格；全局安装命令与无效规格不会被收录。
 
