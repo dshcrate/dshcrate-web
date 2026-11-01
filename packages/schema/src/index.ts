@@ -98,6 +98,34 @@ export interface LiteEntry {
   ec?: "external";
 }
 
+/**
+ * 插件市场切片（DSH 客户端内嵌市场面板用）。
+ *
+ * 为什么单独出一份而不是复用 lite：客户端面板打开即加载，全量 lite（11MB）
+ * 扛不住；这份只留列表要展示的字段，top 2000 控制在百 KB 级。
+ * 键名沿用 LiteEntry 的短名约定，避免两份契约各写一套缩略词。
+ */
+export interface MarketEntry {
+  /** id：owner/repo */ i: string;
+  /** name */ n: string;
+  /** 简介（descriptionZh ?? description） */ d: string;
+  /** stars */ s: number;
+  /** score.total */ sc: number;
+  /** type */ t: PluginType;
+  /** 插件自身版本 */ vr: string | null;
+  /** engines.dsh */ g: string | null;
+  /** 我方规范化安装命令 */ cmd: string | null;
+}
+
+/** 市场切片文件（data/market-top.json）。 */
+export interface MarketFile {
+  schemaVersion: number;
+  generatedAt: string;
+  /** 条目总数（= entries.length）。 */
+  total: number;
+  entries: MarketEntry[];
+}
+
 export interface CatalogMeta {
   schemaVersion: number;
   generatedAt: string;

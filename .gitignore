@@ -15,3 +15,6 @@ dist/
 *.log
 .env
 .env.local
+
+# 独立的插件仓库工作副本（自带 git，不参与本仓库跟踪）
+.plugin-repo/

@@ -1,6 +1,6 @@
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ArtifactIndex, CatalogMeta, LiteEntry, PluginEntry } from "@dsh-shelfry/schema";
+import type { ArtifactIndex, CatalogMeta, LiteEntry, MarketEntry, MarketFile, PluginEntry } from "@dsh-shelfry/schema";
 import { INDEX_SHARD_COUNT, SCHEMA_VERSION, indexShardId, toLiteEntry } from "@dsh-shelfry/schema";
 import { DATA_DIR, WEB_PUBLIC_DATA_DIR } from "./config.ts";
 
@@ -14,10 +14,13 @@ import { DATA_DIR, WEB_PUBLIC_DATA_DIR } from "./config.ts";
  *   catalog/<NNN>.json            明细分片（详情页按需拉）
  *   index/<NNN>.json              倒排索引分片（token 哈希落片，搜索时只载命中片）
  *   artifacts.json                产物清单（web 先读它，再按需拉具体片）
+ *   market-top.json               插件市场切片（DSH 客户端内嵌面板直连，top N 条）
  */
 
 const DETAIL_SHARD_SIZE = 500;
 const PAGE_SIZE = 60;
+/** 市场切片的默认容量：面板打开即全量加载，再大就失去「轻」的意义。 */
+const MARKET_TOP_LIMIT = 2000;
 
 
 function writeJson(path: string, value: unknown): void {
@@ -219,6 +222,62 @@ export function writeIdMap(entries: PluginEntry[]): string {
   const file = resolve(DATA_DIR, "idmap.json");
   writeJson(file, map);
   return file;
+}
+
+/**
+ * 挑选市场切片的条目：按综合分降序取前 limit 条，只保留展示字段。
+ *
+ * 入参：
+ * - entries：全量条目（不会被原地排序，调用方可继续用原数组写其他产物）
+ * - limit：正整数容量
+ * 返回：市场条目数组；缺 id 的条目直接跳过（没有 id 无法生成安装/跳转动作）。
+ * 非法 limit 直接抛错，避免静默产出空文件。
+ */
+export function pickMarketTop(entries: PluginEntry[], limit: number = MARKET_TOP_LIMIT): MarketEntry[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`pickMarketTop：limit 应为正整数，实际 ${String(limit)}`);
+  }
+  return entries
+    .filter((e) => e.id)
+    .sort((a, b) => b.score.total - a.score.total || b.stars - a.stars || a.id.localeCompare(b.id))
+    .slice(0, limit)
+    .map((e) => ({
+      i: e.id,
+      n: e.name,
+      d: e.descriptionZh ?? e.description,
+      s: e.stars,
+      sc: e.score.total,
+      t: e.type,
+      vr: e.version,
+      g: e.install.enginesDsh,
+      cmd: e.install.command,
+    }));
+}
+
+/**
+ * 写市场切片文件 data/market-top.json。
+ *
+ * 入参：
+ * - entries：全量条目
+ * - limit：容量，默认 top 2000
+ * - dir：输出目录，默认 .data（单测传临时目录）
+ * 返回：文件绝对路径与实际条数。
+ */
+export function writeMarketTop(
+  entries: PluginEntry[],
+  limit: number = MARKET_TOP_LIMIT,
+  dir: string = DATA_DIR,
+): { file: string; total: number } {
+  const picked = pickMarketTop(entries, limit);
+  const payload: MarketFile = {
+    schemaVersion: SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    total: picked.length,
+    entries: picked,
+  };
+  const file = resolve(dir, "market-top.json");
+  writeJson(file, payload);
+  return { file, total: picked.length };
 }
 
 /** 把产物同步到 web 的 public/data（构建期用；运行时只读静态文件，无需后端）。

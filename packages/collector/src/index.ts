@@ -10,6 +10,7 @@ import {
   writeIdMap,
   writeIndexShards,
   writeLite,
+  writeMarketTop,
   writeMeta,
 } from "./emit.ts";
 import { normalizeRecord, type RawRecord } from "./normalize.ts";
@@ -484,7 +485,9 @@ async function main(): Promise<void> {
   const metaFile = writeMeta(meta);
   const categoryFiles = writeCategories(entries);
   const idMapFile = writeIdMap(entries);
+  const market = writeMarketTop(active);
   log(args.silent, `[collector] 产物：lite=${lite.length} 条 / 分页 ${pages.count} 页 / 明细 ${shards.length} 片 / 索引 ${index.shards.length} 片`);
+  log(args.silent, `[collector] 市场切片：${market.total} 条 → ${market.file}`);
   log(args.silent, `[collector] 清单：${artifactFile}  元信息：${metaFile}`);
   log(args.silent, `[collector] 分类：${categoryFiles.join(" / ")}  反查表：${idMapFile}`);
   log(args.silent, `[collector] store 路径：${catalogPath()}`);
