@@ -15,6 +15,7 @@ import { DATA_DIR, WEB_PUBLIC_DATA_DIR } from "./config.ts";
  *   index/<NNN>.json              倒排索引分片（token 哈希落片，搜索时只载命中片）
  *   artifacts.json                产物清单（web 先读它，再按需拉具体片）
  *   market-top.json               插件市场切片（DSH 客户端内嵌面板直连，top N 条）
+ *   dsh-shelfry.json              插件市场全量切片（结构同 market-top，不截断，按 id 去重）
  */
 
 const DETAIL_SHARD_SIZE = 500;
@@ -224,6 +225,33 @@ export function writeIdMap(entries: PluginEntry[]): string {
   return file;
 }
 
+/** 把条目映射成市场面板展示用的短键名结构（与 lite 契约保持一致）。 */
+function toMarketEntry(e: PluginEntry): MarketEntry {
+  return {
+    i: e.id,
+    n: e.name,
+    d: e.descriptionZh ?? e.description,
+    s: e.stars,
+    sc: e.score.total,
+    t: e.type,
+    vr: e.version,
+    g: e.install.enginesDsh,
+    cmd: e.install.command,
+  };
+}
+
+/**
+ * 过滤并排序市场条目的候选集。
+ *
+ * 入参：entries 全量条目
+ * 返回：跳过缺 id 的条目后按综合分、星数、id 排序的新数组（不改动入参顺序）
+ */
+function sortedMarketEntries(entries: PluginEntry[]): PluginEntry[] {
+  return entries
+    .filter((e) => e.id)
+    .sort((a, b) => b.score.total - a.score.total || b.stars - a.stars || a.id.localeCompare(b.id));
+}
+
 /**
  * 挑选市场切片的条目：按综合分降序取前 limit 条，只保留展示字段。
  *
@@ -237,21 +265,24 @@ export function pickMarketTop(entries: PluginEntry[], limit: number = MARKET_TOP
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error(`pickMarketTop：limit 应为正整数，实际 ${String(limit)}`);
   }
-  return entries
-    .filter((e) => e.id)
-    .sort((a, b) => b.score.total - a.score.total || b.stars - a.stars || a.id.localeCompare(b.id))
-    .slice(0, limit)
-    .map((e) => ({
-      i: e.id,
-      n: e.name,
-      d: e.descriptionZh ?? e.description,
-      s: e.stars,
-      sc: e.score.total,
-      t: e.type,
-      vr: e.version,
-      g: e.install.enginesDsh,
-      cmd: e.install.command,
-    }));
+  return sortedMarketEntries(entries).slice(0, limit).map(toMarketEntry);
+}
+
+/**
+ * 挑选全量市场条目：不截断，同一 id 只保留排序最靠前的一条。
+ *
+ * 入参：entries 全量条目（不会被原地排序）
+ * 返回：市场条目数组；重名但 id 不同的条目会保留（同名仓库可能是各自独立的实现）
+ */
+export function pickMarketAll(entries: PluginEntry[]): MarketEntry[] {
+  const seen = new Set<string>();
+  const unique: PluginEntry[] = [];
+  for (const e of sortedMarketEntries(entries)) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    unique.push(e);
+  }
+  return unique.map(toMarketEntry);
 }
 
 /**
@@ -276,6 +307,30 @@ export function writeMarketTop(
     entries: picked,
   };
   const file = resolve(dir, "market-top.json");
+  writeJson(file, payload);
+  return { file, total: picked.length };
+}
+
+/**
+ * 写全量市场切片文件 data/dsh-shelfry.json（结构与 market-top 一致，不截断）。
+ *
+ * 入参：
+ * - entries：全量条目
+ * - dir：输出目录，默认 .data（单测传临时目录）
+ * 返回：文件绝对路径与实际条数。
+ */
+export function writeMarketAll(
+  entries: PluginEntry[],
+  dir: string = DATA_DIR,
+): { file: string; total: number } {
+  const picked = pickMarketAll(entries);
+  const payload: MarketFile = {
+    schemaVersion: SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    total: picked.length,
+    entries: picked,
+  };
+  const file = resolve(dir, "dsh-shelfry.json");
   writeJson(file, payload);
   return { file, total: picked.length };
 }

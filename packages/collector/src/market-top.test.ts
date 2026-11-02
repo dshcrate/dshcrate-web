@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { MarketFile, PluginEntry } from "@dsh-shelfry/schema";
 
-import { pickMarketTop, writeMarketTop } from "./emit.ts";
+import { pickMarketAll, pickMarketTop, writeMarketAll, writeMarketTop } from "./emit.ts";
 
 /** 构造一条最小可用条目：只填市场切片用到的字段，其余给安全默认值。 */
 function entry(id: string, total: number, patch: Partial<PluginEntry> = {}): PluginEntry {
@@ -101,6 +101,54 @@ test("writeMarketTop：落盘文件包含元信息与裁剪后的条目", () => 
     assert.equal(typeof payload.generatedAt, "string");
     assert.deepEqual(payload.entries.map((e) => e.i), ["b/two", "c/three"]);
     assert.equal(payload.entries[0]?.cmd, "dsh plugin --profile web add pkg");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pickMarketAll：不截断全量，并按分数降序", () => {
+  const entries = [entry("a/one", 40), entry("b/two", 90), entry("c/three", 65)];
+  assert.deepEqual(pickMarketAll(entries).map((e) => e.i), ["b/two", "c/three", "a/one"]);
+});
+
+test("pickMarketAll：同 id 只保留一条，同名不同 id 都保留", () => {
+  const entries = [entry("x/dup", 50), entry("x/dup", 90), entry("y/dup", 20)];
+  const picked = pickMarketAll(entries);
+  assert.deepEqual(picked.map((e) => e.i), ["x/dup", "y/dup"]);
+  assert.equal(picked.length, 2);
+  // 保留的是排序更靠前（分数更高）的那条
+  assert.equal(picked[0]?.sc, 90);
+});
+
+test("pickMarketAll：缺 id 的条目跳过，空输入返回空切片", () => {
+  assert.deepEqual(pickMarketAll([entry("", 99)]), []);
+  assert.deepEqual(pickMarketAll([]), []);
+});
+
+test("writeMarketAll：落盘 dsh-shelfry.json，全量且含元信息", () => {
+  const dir = mkdtempSync(join(tmpdir(), "market-all-"));
+  try {
+    const entries = [entry("a/one", 40), entry("b/two", 90), entry("c/three", 65)];
+    const out = writeMarketAll(entries, dir);
+    assert.equal(out.total, 3);
+    assert.equal(out.file, join(dir, "dsh-shelfry.json"));
+    const payload = JSON.parse(readFileSync(out.file, "utf8")) as MarketFile;
+    assert.equal(payload.total, 3);
+    assert.equal(typeof payload.schemaVersion, "number");
+    assert.equal(typeof payload.generatedAt, "string");
+    assert.deepEqual(payload.entries.map((e) => e.i), ["b/two", "c/three", "a/one"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("writeMarketAll：空输入产出 total 为 0 的合法文件", () => {
+  const dir = mkdtempSync(join(tmpdir(), "market-all-empty-"));
+  try {
+    const out = writeMarketAll([], dir);
+    const payload = JSON.parse(readFileSync(out.file, "utf8")) as MarketFile;
+    assert.equal(payload.total, 0);
+    assert.deepEqual(payload.entries, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
