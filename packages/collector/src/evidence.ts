@@ -5,6 +5,7 @@ import { DATA_DIR } from "./config.ts";
 import { scoreEntry } from "./score.ts";
 import { findStandaloneCommand, type StandaloneHit } from "./standalone.ts";
 import { isManualPick } from "./manual-pick.ts";
+import { isThemeRepo } from "./normalize.ts";
 
 /**
  * 生态归属的实证判定。
@@ -332,7 +333,13 @@ function applyEvidence(e: PluginEntry, ev: Evidence): void {
     e.install.risky = false;
   }
   if (!ev.kind) return;
-  e.type = ev.kind === "skill" ? "skill" : "cordis-plugin";
+  // 主题插件在证据阶段也要保住类型，否则会被统一重置成 cordis-plugin。
+  e.type =
+    ev.kind === "skill"
+      ? "skill"
+      : isThemeRepo(e.fullName, e.name, e.tags)
+        ? "theme"
+        : "cordis-plugin";
   if (ev.kind === "skill") {
     // 不存在 `dsh skill add`（dsh 会把 skill 当成 profile 名报错），
     // 所以 skill 只改类型与安装方式，命令一律留空，由 UI 说明。

@@ -32,8 +32,24 @@ const strArr = (v: unknown): string[] =>
 
 function toType(v: unknown): PluginType {
   const s = str(v);
-  if (s === "cordis-plugin" || s === "skill") return s;
+  if (s === "cordis-plugin" || s === "skill" || s === "theme") return s;
   return "unknown";
+}
+
+/** 主题类插件的精确标签；「主题」这种泛标签不收，避免把普通插件卷进来。 */
+const THEME_TAGS = new Set(["dsh-theme", "theme", "皮肤", "配色"]);
+
+/**
+ * 判断是否主题类插件。
+ *
+ * 上游只给 cordis-plugin / skill 两种类型，主题只能靠线索推断：
+ * 标签精确命中 THEME_TAGS，或仓库名以 -theme / -skin / -wallpaper 结尾。
+ * 只看仓库名部分，不看 owner 昵称（`Nicholaskin/xxx` 会误伤）。
+ */
+export function isThemeRepo(fullName: string, name: string, tags: string[]): boolean {
+  const repo = fullName.includes("/") ? fullName.slice(fullName.indexOf("/") + 1) : name;
+  if (/(^|[-_])(theme|skin|wallpaper)s?\d*$/i.test(repo)) return true;
+  return tags.some((t) => THEME_TAGS.has(t.trim().toLowerCase()));
 }
 
 /**
@@ -126,11 +142,14 @@ export function normalizeRecord(raw: RawRecord, now: Date, prev?: PluginEntry): 
   // 类型不用 prev.type：被污染过的结论会永久固化（实测 703 条 skill 里 463 条是误判，
   // 撤规则后 prev 仍把它们当 skill）。改用唯一可靠判据 —— 安装方式 skills-add。
   const tags = strArr(raw.tags);
-  const type: PluginType = str(raw.type)
+  const baseType: PluginType = str(raw.type)
     ? toType(raw.type)
     : install.method === "skills-add"
       ? "skill"
       : "cordis-plugin";
+  // 主题判定只作用于普通插件：skill 有明确安装方式，不参与主题归并。
+  const type: PluginType =
+    baseType === "cordis-plugin" && isThemeRepo(fullName, name, tags) ? "theme" : baseType;
 
   const entry: PluginEntry = {
     id,

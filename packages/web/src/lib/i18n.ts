@@ -87,6 +87,7 @@ const ZH = {
   "type.all": "全部类型",
   "type.plugin": "插件",
   "type.skill": "Skill",
+  "type.theme": "主题",
   "type.unknown": "未识别",
 
   "stars.all": "不限星标",
@@ -401,6 +402,7 @@ const EN: Record<TKey, string> = {
   "type.all": "All types",
   "type.plugin": "Plugin",
   "type.skill": "Skill",
+  "type.theme": "Theme",
   "type.unknown": "Unknown",
 
   "stars.all": "Any stars",

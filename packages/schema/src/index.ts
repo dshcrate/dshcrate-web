@@ -8,8 +8,8 @@
  * - 数据不进 git：这些类型只描述「构建期产物」的形状，不描述条目内容。
  */
 
-/** 插件形态。cordis-plugin 走 pnpm-profile 安装，skill 走 skills-add。 */
-export type PluginType = "cordis-plugin" | "skill" | "unknown";
+/** 插件形态。cordis-plugin 走 pnpm-profile 安装，skill 走 skills-add，theme 为界面主题。 */
+export type PluginType = "cordis-plugin" | "skill" | "theme" | "unknown";
 
 /**
  * 条目所属生态。

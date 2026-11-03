@@ -55,21 +55,22 @@ const CATEGORY_SKELETON_WIDTHS = [92, 106, 100, 110, 102, 112, 90, 104, 98, 108,
  * 数量远少于插件，所以切换后按全量切片在客户端过滤，而不是单独产物。
  */
 
-type TypeFilter = "all" | "cordis-plugin" | "skill" | "unknown";
+type TypeFilter = "all" | "cordis-plugin" | "skill" | "theme" | "unknown";
 type StarsFilter = "all" | "10" | "100" | "500" | "1000";
 type CompatFilter = "all" | "declared" | "undeclared";
 
-const TYPE_ORDER: TypeFilter[] = ["all", "cordis-plugin", "skill", "unknown"];
+const TYPE_ORDER: TypeFilter[] = ["all", "cordis-plugin", "skill", "theme", "unknown"];
 
 // 不能用 Object.keys：数字形态的键会被 JS 按数值提前，导致「不限」跑到末尾。
 const STARS_ORDER: StarsFilter[] = ["all", "10", "100", "500", "1000"];
 
 const SORT_ORDER: SortKey[] = ["score", "stars", "recent"];
 
-const TYPE_KEY: Record<TypeFilter, "type.all" | "type.plugin" | "type.skill" | "type.unknown"> = {
+const TYPE_KEY: Record<TypeFilter, "type.all" | "type.plugin" | "type.skill" | "type.theme" | "type.unknown"> = {
   all: "type.all",
   "cordis-plugin": "type.plugin",
   skill: "type.skill",
+  theme: "type.theme",
   unknown: "type.unknown",
 };
 
