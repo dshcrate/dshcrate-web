@@ -15,18 +15,53 @@ const BASE = import.meta.env.BASE_URL;
 const url = (p: string) => `${BASE}data/${p}`;
 /** 数据请求超时上限：与收录弹窗的写接口同量级，超过就报错而不是一直等 */
 const FETCH_TIMEOUT_MS = 8000;
+/** 全量切片约 12 MB：弱网下经常超过 8 秒，单独放宽到 60 秒，避免被误判成失败 */
+const LITE_TIMEOUT_MS = 60_000;
 
-async function getJson<T>(path: string, cache: RequestCache = "default"): Promise<T> {
+/** 下载进度：received 为已接收字节（解压后），total 为 Content-Length（取不到为 null，gzip 时是压缩后大小） */
+export interface LoadProgress {
+  received: number;
+  total: number | null;
+}
+export type ProgressHandler = (progress: LoadProgress) => void;
+
+async function getJson<T>(
+  path: string,
+  cache: RequestCache = "default",
+  onProgress?: ProgressHandler,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<T> {
   try {
     const res = await fetch(url(path), {
       cache,
       headers: { accept: "application/json" },
       // 挂起的请求不能让它无限转圈：超时后转成可读错误，页面才有机会显示失败态。
       // 老浏览器没有 AbortSignal.timeout（Safari 15 及更早），退回无超时也要能正常请求
-      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined,
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined,
     });
     if (!res.ok) throw new Error(`拉取 ${path} 失败: HTTP ${res.status}`);
-    return (await res.json()) as T;
+    if (!onProgress || !res.body) return (await res.json()) as T;
+    // 逐块读取以便回报真实下载进度；读完后再整体解析，避免流式解析 JSON 的复杂度
+    const length = Number(res.headers.get("content-length") ?? "");
+    const total = Number.isFinite(length) && length > 0 ? length : null;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      received += value.byteLength;
+      onProgress({ received, total });
+    }
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(merged)) as T;
   } catch (err) {
     if ((err as Error)?.name === "TimeoutError") throw new Error(`拉取 ${path} 超时，请检查网络后重试`);
     throw err;
@@ -144,15 +179,28 @@ export const scopeCount = (meta: CatalogMeta | null, scope: CatalogScope): numbe
 };
 
 let litePending: Promise<LiteEntry[]> | null = null;
+/** 进度回调只留一个：空闲预取与筛选触发的可能是同一次下载，后来的调用覆盖前者 */
+let liteProgressHandler: ProgressHandler | null = null;
 /** 全量浏览切片（搜索、筛选与详情页推荐时需要，首次使用时加载并缓存）。
  *  缓存的是 Promise 而不是结果：首页的空闲预取、筛选、搜索框聚焦可能并发触发，
  *  只缓存结果的话，下载完成前的每个调用都会各发一次 10 MB 的请求。 */
-export function loadLite(): Promise<LiteEntry[]> {
+export function loadLite(onProgress?: ProgressHandler): Promise<LiteEntry[]> {
+  if (onProgress) liteProgressHandler = onProgress;
   if (!litePending) {
-    const pending = getJson<LiteEntry[]>("lite.json");
+    const pending = getJson<LiteEntry[]>(
+      "lite.json",
+      "default",
+      (progress) => { liteProgressHandler?.(progress); },
+      LITE_TIMEOUT_MS,
+    );
     // 失败不要把 rejected promise 留在缓存里，否则后续调用永远失败
-    pending.catch(() => {
-      if (litePending === pending) litePending = null;
+    pending.then(() => {
+      if (litePending === pending) liteProgressHandler = null;
+    }).catch(() => {
+      if (litePending === pending) {
+        litePending = null;
+        liteProgressHandler = null;
+      }
     });
     litePending = pending;
   }

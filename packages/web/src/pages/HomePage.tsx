@@ -18,6 +18,7 @@ import {
   siteConfig,
   type CatalogScope,
   type Category,
+  type LoadProgress,
 } from "../lib/data";
 import { createSearcher, normalizeQuery, rankHits, sortItems, type SearchHit, type SortKey } from "../lib/search";
 import { categoryLabel } from "../lib/labels";
@@ -125,6 +126,8 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [fullLite, setFullLite] = useState<LiteEntry[] | null>(null);
+  /** 全量切片的下载进度：字节数来自流式读取，用于长下载时给用户可见反馈 */
+  const [liteProgress, setLiteProgress] = useState<LoadProgress | null>(null);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   /** hits 对应的查询词：换词后结果还没算出来时，旧结果不能拿来判断页签归属 */
   const [hitsQuery, setHitsQuery] = useState("");
@@ -217,7 +220,7 @@ export default function HomePage() {
     let cancelled = false;
     (async () => {
       try {
-        const lite = await loadLite();
+        const lite = await loadLite((progress) => { if (!cancelled) setLiteProgress(progress); });
         if (!cancelled) setFullLite(lite);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -225,6 +228,19 @@ export default function HomePage() {
     })();
     return () => { cancelled = true; };
   }, [hasFilters, fullLite]);
+
+  /** 全量切片的加载提示：有真实字节数就带上进度，避免长下载看起来像卡死 */
+  const loadingAllText = useMemo(() => {
+    if (!liteProgress) return t("home.loadingAll");
+    const doneMb = liteProgress.received / (1024 * 1024);
+    // gzip 下 Content-Length 是压缩后大小，解压字节数会超过它：算不出百分比就只报已下载量
+    if (!liteProgress.total || liteProgress.received > liteProgress.total) {
+      return t("home.loadingAllBytes", { done: doneMb.toFixed(1) });
+    }
+    const totalMb = liteProgress.total / (1024 * 1024);
+    const pct = Math.min(99, Math.round((liteProgress.received / liteProgress.total) * 100));
+    return t("home.loadingAllPercent", { done: doneMb.toFixed(1), total: totalMb.toFixed(1), pct });
+  }, [liteProgress, t]);
 
   // 检索：只在你按下回车 / 点「搜索」后跑一次（query 是已提交的值），
   // 输入过程不再触发 Fuse，避免每次按键都占用主线程上百毫秒。
@@ -530,7 +546,7 @@ export default function HomePage() {
 
       <div className="result-line">
         {hasFilters && !fullLite
-          ? t("home.loadingAll")
+          ? loadingAllText
           : t(isTools ? "home.total.tools" : "home.total.plugins", { n: totalInScope })}
         {hasFilters && fullLite && ` · ${t("home.shown", { n: Math.min(shown, filtered.length) })}`}
         {!hasFilters && ` · ${t("home.shown", { n: Math.min(shown, filtered.length) })}`}
@@ -543,7 +559,7 @@ export default function HomePage() {
         ) : (
           <div className="empty">
             {hasFilters && !fullLite
-              ? t("home.loadingAll")
+              ? loadingAllText
               : t(isTools ? "home.empty.tools" : "home.empty.plugins")}
           </div>
         )
