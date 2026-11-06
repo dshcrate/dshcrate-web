@@ -4,6 +4,7 @@
     "obra/superpowers",
     "jsonchao/prompt-optimizer",
     "linshenkx/prompt-optimizer",
-    "tencent-hunyuan/hy-memory"
+    "tencent-hunyuan/hy-memory",
+    "heydamir/unslop"
   ]
 }
