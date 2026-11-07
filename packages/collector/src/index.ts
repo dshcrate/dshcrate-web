@@ -20,6 +20,7 @@ import { fetchGithubRecords, fetchReposByNames } from "./sources/github.ts";
 import { fetchCatalogIndex, mergeCatalog } from "./sources/catalog.ts";
 import { resolveVersions } from "./versions.ts";
 import { resolveDownloads } from "./downloads.ts";
+import { writeOfficialIndex } from "./market-index.ts";
 import { clearBorrowedPackageInfo } from "./identity.ts";
 import { isPlaceholderSpec, resolveEvidence, writeDroppedList } from "./evidence.ts";
 import { isAuthError } from "./token-guard.ts";
@@ -491,6 +492,15 @@ async function main(): Promise<void> {
   log(args.silent, `[collector] 产物：lite=${lite.length} 条 / 分页 ${pages.count} 页 / 明细 ${shards.length} 片 / 索引 ${index.shards.length} 片`);
   log(args.silent, `[collector] 市场切片：${market.total} 条 → ${market.file}`);
   log(args.silent, `[collector] 插件全量数据：${marketAll.total} 条 → ${marketAll.file}`);
+  try {
+    const official = await writeOfficialIndex(active);
+    log(args.silent, `[collector] 官方索引：${official.total} 条 → ${official.file}`);
+    log(args.silent, `[collector] 官方索引补时间：查询 ${official.queried} 个包 / 缓存命中 ${official.cached} 条 / 缺时间 ${official.missed} 条`);
+    log(args.silent, `[collector] 官方索引跳过：${JSON.stringify(official.skipped)}`);
+  } catch (error) {
+    // 索引失败不能拖垮主流程：其它产物已经写完，这里只记日志
+    log(args.silent, `[collector] 官方索引未生成（不影响其他产物）：${error instanceof Error ? error.message : String(error)}`);
+  }
   log(args.silent, `[collector] 清单：${artifactFile}  元信息：${metaFile}`);
   log(args.silent, `[collector] 分类：${categoryFiles.join(" / ")}  反查表：${idMapFile}`);
   log(args.silent, `[collector] store 路径：${catalogPath()}`);

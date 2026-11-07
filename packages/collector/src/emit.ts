@@ -336,12 +336,17 @@ export function writeMarketAll(
 }
 
 /** 把产物同步到 web 的 public/data（构建期用；运行时只读静态文件，无需后端）。
- *  catalog.json 是本地 store 的全量副本，明细分片已等价覆盖，不必发给前端。 */
+ *  catalog.json 是本地 store 的全量副本，明细分片已等价覆盖，不必发给前端；
+ *  npm 发布时间缓存只服务于官方索引生成，同样不外发。 */
 export function syncToWebPublic(): void {
   rmSync(WEB_PUBLIC_DATA_DIR, { recursive: true, force: true });
   mkdirSync(resolve(WEB_PUBLIC_DATA_DIR, ".."), { recursive: true });
   cpSync(DATA_DIR, WEB_PUBLIC_DATA_DIR, {
     recursive: true,
-    filter: (src) => !src.endsWith("/catalog.json") && !src.endsWith("\\catalog.json"),
+    filter: (src) =>
+      !src.endsWith("/catalog.json") &&
+      !src.endsWith("\\catalog.json") &&
+      !src.endsWith("/npm-publish-times.json") &&
+      !src.endsWith("\\npm-publish-times.json"),
   });
 }
