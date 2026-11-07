@@ -22,6 +22,8 @@ const ORIGIN = "https://shelfry.app";
 const NPM_NAME = /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/;
 /** 钉死的精确版本，如 1.2.3 / v1.2.3 / 1.2.3-beta.1。 */
 const PINNED_VERSION = /^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/;
+/** GitHub 用户名规则：字母数字与连字符，最长 39 字符。 */
+const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 /** 官方顶层分类；条目按自身类型归到这里，必须与 metadata.categories 一致。 */
 const CATEGORY_TITLES: Record<string, { title: { en: string; zh: string } }> = {
@@ -41,6 +43,7 @@ interface OfficialPlugin {
   name: string;
   title: string;
   description?: string | { en: string; zh?: string };
+  icon?: string;
   homepage: string;
   repository: { url: string };
   metadata: { category: string };
@@ -142,6 +145,19 @@ function categoryOf(type: PluginType): string {
 }
 
 /**
+ * 生成 GitHub 头像图标地址。
+ * 入参：条目 id，GitHub 来源形如 owner/repo
+ * 返回：官方索引可用的绝对图标 URL；不是 GitHub 仓库形态返回 undefined。
+ */
+function githubAvatarIcon(id: string): string | undefined {
+  const parts = id.split("/");
+  if (parts.length !== 2) return undefined;
+  const owner = parts[0];
+  if (owner === undefined || !GITHUB_OWNER.test(owner)) return undefined;
+  return `https://avatars.githubusercontent.com/${owner}?size=64`;
+}
+
+/**
  * 把单条条目映射成官方索引条目。
  * 入参：条目 + 该版本在 npm 的发布时间（整数秒，取不到传 null）
  * 返回：满足官方最低要求的官方条目；缺 npm 包、缺版本或缺时间返回 null。
@@ -153,10 +169,12 @@ export function toOfficialPlugin(entry: PluginEntry, publishedAt: number | null)
   if (version === null || version === "") return null;
   if (publishedAt === null || !Number.isInteger(publishedAt)) return null;
   const description = localizedDescription(entry);
+  const icon = githubAvatarIcon(entry.id);
   return {
     name: target.pkg,
     title: entry.fullName,
     ...(description === undefined ? {} : { description }),
+    ...(icon === undefined ? {} : { icon }),
     homepage: `${ORIGIN}/#/p/${entry.id}`,
     repository: { url: `https://github.com/${entry.id}` },
     metadata: { category: categoryOf(entry.type) },

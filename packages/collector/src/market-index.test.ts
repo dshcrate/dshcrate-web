@@ -78,6 +78,25 @@ test("buildOfficialIndex：合格条目按官方字段输出", () => {
   assert.deepEqual(skipped, { noNpm: 0, noVersion: 0, noTime: 0, duplicate: 0 });
 });
 
+test("buildOfficialIndex：GitHub 条目补 owner 头像", () => {
+  const { index } = buildOfficialIndex([entry("Owner-Name/pkg")], TIMES);
+  assert.equal(index.plugins[0]?.icon, "https://avatars.githubusercontent.com/Owner-Name?size=64");
+});
+
+test("buildOfficialIndex：非 GitHub 形态与非法 owner 不补头像", () => {
+  const ids = ["pkg", "a/b/c", "bad_name/pkg", "bad.name/pkg", `${"a".repeat(40)}/pkg`, "-lead/pkg"];
+  for (const id of ids) {
+    const { index } = buildOfficialIndex([entry(id)], TIMES);
+    assert.equal(index.plugins[0]?.icon, undefined, id);
+  }
+});
+
+test("assertOfficialIndex：带 icon 的索引仍通过本地校验", () => {
+  const { index } = buildOfficialIndex([entry("owner/pkg")], TIMES);
+  assert.equal(index.plugins[0]?.icon, "https://avatars.githubusercontent.com/owner?size=64");
+  assert.doesNotThrow(() => assertOfficialIndex(index));
+});
+
 test("buildOfficialIndex：中文简介转成 {en,zh}，超长描述截到 160 字", () => {
   const long = "a".repeat(150) + " " + "b".repeat(60);
   const { index } = buildOfficialIndex(
