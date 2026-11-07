@@ -69,7 +69,7 @@ test("buildOfficialIndex：合格条目按官方字段输出", () => {
   assert.equal(plugin?.name, "pkg");
   assert.equal(plugin?.title, "owner/pkg");
   assert.equal(plugin?.description, "上游简介");
-  assert.equal(plugin?.homepage, "https://shelfry.app/#/p/owner/pkg");
+  assert.equal(plugin?.homepage, "https://shelfry.app/p/owner/pkg");
   assert.deepEqual(plugin?.repository, { url: "https://github.com/owner/pkg" });
   assert.deepEqual(plugin?.metadata, { category: "plugin" });
   assert.deepEqual(plugin?.versions, [

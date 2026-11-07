@@ -175,7 +175,7 @@ export function toOfficialPlugin(entry: PluginEntry, publishedAt: number | null)
     title: entry.fullName,
     ...(description === undefined ? {} : { description }),
     ...(icon === undefined ? {} : { icon }),
-    homepage: `${ORIGIN}/#/p/${entry.id}`,
+    homepage: `${ORIGIN}/p/${entry.id}`,
     repository: { url: `https://github.com/${entry.id}` },
     metadata: { category: categoryOf(entry.type) },
     versions: [{ version, publishTimestamp: publishedAt, source: { type: "npm" } }],
