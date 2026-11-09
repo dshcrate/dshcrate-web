@@ -451,8 +451,11 @@ async function main(): Promise<void> {
   const versionHits = await resolveVersions(active);
   log(
     args.silent,
-    `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包 / 失败 ${versionHits.failed}）`,
+    `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包 / 无版本 ${versionHits.missing} / 限流 ${versionHits.throttled} / 网络 ${versionHits.unreachable}）`,
   );
+  if (versionHits.samples.length > 0) {
+    log(args.silent, `[collector] 版本查询失败样例：${versionHits.samples.join("、")}`);
+  }
 
   // 下载量同样要在写产物之前补全 —— lite 切片要带 dl 字段。
   const downloads = await resolveDownloads(active);

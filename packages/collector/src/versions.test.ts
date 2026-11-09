@@ -43,16 +43,22 @@ function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "versions-"));
 }
 
-/** 替换 fetch，记录请求 URL；调用方负责 restore。 */
-function stubFetch(answer: (url: string) => Response | Promise<Response>): { calls: string[]; restore: () => void } {
+/** 替换 fetch，记录请求 URL 与 init；调用方负责 restore。 */
+function stubFetch(answer: (url: string, init?: RequestInit) => Response | Promise<Response>): {
+  calls: string[];
+  inits: Array<RequestInit | undefined>;
+  restore: () => void;
+} {
   const original = globalThis.fetch;
   const calls: string[] = [];
-  globalThis.fetch = (async (input: unknown) => {
+  const inits: Array<RequestInit | undefined> = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
-    return answer(url);
+    inits.push(init);
+    return answer(url, init);
   }) as typeof fetch;
-  return { calls, restore: () => { globalThis.fetch = original; } };
+  return { calls, inits, restore: () => { globalThis.fetch = original; } };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -68,7 +74,7 @@ test("resolveVersions：首次查询回填版本并写入缓存", async () => {
     const item = entry();
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "1.2.3");
-    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, failed: 0 });
+    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, missing: 0, throttled: 0, unreachable: 0, samples: [] });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string; t: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "1.2.3");
   } finally {
@@ -86,7 +92,7 @@ test("resolveVersions：TTL 内直接命中缓存，不再发请求", async () =
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "2.0.0");
     assert.equal(fetchStub.calls.length, 0);
-    assert.deepEqual(result, { hits: 1, cached: 1, queried: 0, failed: 0 });
+    assert.deepEqual(result, { hits: 1, cached: 1, queried: 0, missing: 0, throttled: 0, unreachable: 0, samples: [] });
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
@@ -120,7 +126,10 @@ test("resolveVersions：查询失败保留旧版本，缓存不动", async () =>
     assert.equal(item.version, "1.0.0");
     // 5xx 会重试一次，仍失败才放弃
     assert.equal(fetchStub.calls.length, 2);
-    assert.equal(result.failed, 1);
+    assert.equal(result.unreachable, 1);
+    assert.equal(result.missing, 0);
+    assert.equal(result.samples.length, 1);
+    assert.match(result.samples[0]!, /npm:some-plugin#unreachable/);
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "1.0.0");
   } finally {
@@ -141,9 +150,39 @@ test("resolveVersions：首次请求失败后重试成功", async () => {
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "0.5.1");
     assert.equal(fetchStub.calls.length, 2);
-    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, failed: 0 });
+    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, missing: 0, throttled: 0, unreachable: 0, samples: [] });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "0.5.1");
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：重试仍被限流计为 throttled，并记录样例", async () => {
+  const dir = tempDir();
+  const fetchStub = stubFetch(() => json({ error: "rate limited" }, 429));
+  try {
+    const item = entry({ version: "0.5.0" });
+    const result = await resolveVersions([item], dir);
+    assert.equal(item.version, "0.5.0");
+    assert.equal(fetchStub.calls.length, 2);
+    assert.equal(result.throttled, 1);
+    assert.equal(result.unreachable, 0);
+    assert.match(result.samples[0]!, /npm:some-plugin#throttled/);
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：请求带 User-Agent，避免 npm 端点限流", async () => {
+  const dir = tempDir();
+  const fetchStub = stubFetch(() => json({ version: "1.2.3" }));
+  try {
+    await resolveVersions([entry()], dir);
+    const headers = fetchStub.inits[0]?.headers as Record<string, string> | undefined;
+    assert.match(String(headers?.["user-agent"]), /dsh-crate-collector/);
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
@@ -158,7 +197,8 @@ test("resolveVersions：404 属确定性失败，不重试", async () => {
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, null);
     assert.equal(fetchStub.calls.length, 1);
-    assert.equal(result.failed, 1);
+    assert.equal(result.missing, 1);
+    assert.equal(result.samples.length, 0);
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
