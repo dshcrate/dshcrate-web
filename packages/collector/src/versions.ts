@@ -14,13 +14,17 @@ import { DATA_DIR } from "./config.ts";
  * 缓存：`.data/versions-cache.json`，形如
  * `{ "npm:dshmarket": { "v": "1.73.16", "t": "2026-11-09" } }`。
  * TTL 取 1 天，和每日构建对齐：每个包每天重查一次，过期的才发请求。
- * 查询失败时保留条目上一轮的版本，缓存也保持原样，下一轮再试。
+ * 网络错误、超时、429 与 5xx 会隔 500ms 重试一次（404 这类确定性失败不重试）；
+ * 重试后仍失败则保留条目上一轮的版本，缓存也保持原样，下一轮再试。
  */
 
 const REGISTRY = "https://registry.npmjs.org";
 const RAW = "https://raw.githubusercontent.com";
-const CONCURRENCY = 48;
+/** 每日全量重查约 3.5 万个请求，并发压到 24 避免触发 registry/raw 限流。 */
+const CONCURRENCY = 24;
 const TIMEOUT_MS = 8000;
+/** 失败重试前的等待时间，给瞬时限流一点恢复窗口。 */
+const RETRY_DELAY_MS = 500;
 const DAY = 86_400_000;
 /** 版本缓存有效期：站点每天构建一次，正好让每个包每天刷新一次。 */
 const TTL_DAYS = 1;
@@ -45,6 +49,8 @@ export interface VersionResolveResult {
   cached: number;
   /** 实际查询的包数（npm 包名或仓库）。 */
   queried: number;
+  /** 重试后仍查询失败的包数（保留旧版本）。 */
+  failed: number;
 }
 
 interface CacheRow {
@@ -75,17 +81,34 @@ function parseSpec(spec: string | null): Spec {
   return { kind: "npm", pkg: name };
 }
 
-async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
+/** 单次请求结果：retryable 表示这次失败值得再试一次。 */
+interface Attempt {
+  body: Record<string, unknown> | null;
+  retryable: boolean;
+}
+
+/** 发一次请求；网络错误/超时/429/5xx 标为可重试，其余失败直接放弃。 */
+async function attempt(url: string): Promise<Attempt> {
   try {
     const res = await fetch(url, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    return (await res.json()) as Record<string, unknown>;
+    if (!res.ok) return { body: null, retryable: res.status === 429 || res.status >= 500 };
+    return { body: (await res.json()) as Record<string, unknown>, retryable: false };
   } catch {
-    return null;
+    return { body: null, retryable: true };
   }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise(done => setTimeout(done, ms));
+
+/** 取 JSON；瞬时限流/网络抖动重试一次，确定性失败（404 等）不重试。 */
+async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
+  const first = await attempt(url);
+  if (first.body !== null || !first.retryable) return first.body;
+  await sleep(RETRY_DELAY_MS);
+  return (await attempt(url)).body;
 }
 
 const latestVersion = async (pkg: string): Promise<string | null> => {
@@ -149,10 +172,17 @@ interface PendingGroup {
   entries: PluginEntry[];
 }
 
-/** 并发刷新过期分组；返回实际查询的包数。 */
-async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<number> {
+/** 刷新结果：查询分组数与最终失败分组数。 */
+interface RefreshResult {
+  queried: number;
+  failed: number;
+}
+
+/** 并发刷新过期分组；失败分组计入 failed（条目保留旧版本）。 */
+async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<RefreshResult> {
   let cursor = 0;
   let queried = 0;
+  let failed = 0;
   const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, async () => {
     while (cursor < pending.length) {
       const group = pending[cursor]!;
@@ -162,13 +192,16 @@ async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<nu
       const version = spec.kind === "npm"
         ? await latestVersion(spec.pkg)
         : await repoVersion(spec.owner, spec.repo);
-      if (version === null) continue;
+      if (version === null) {
+        failed += 1;
+        continue;
+      }
       for (const entry of group.entries) entry.version = version;
       cache[group.key] = { v: version, t: today() };
     }
   });
   await Promise.all(workers);
-  return queried;
+  return { queried, failed };
 }
 
 /** 就地写入 entry.version，过期条目重新查询并回填缓存。 */
@@ -198,9 +231,9 @@ export async function resolveVersions(
     else pending.set(key, { key, spec: target, entries: [entry] });
   }
 
-  const queried = await refreshPending([...pending.values()], cache);
+  const { queried, failed } = await refreshPending([...pending.values()], cache);
   if (queried > 0) saveCache(dir, cache);
 
   const hits = entries.filter(entry => entry.version !== null && entry.version !== "").length;
-  return { hits, cached, queried };
+  return { hits, cached, queried, failed };
 }

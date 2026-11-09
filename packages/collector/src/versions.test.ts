@@ -68,7 +68,7 @@ test("resolveVersions：首次查询回填版本并写入缓存", async () => {
     const item = entry();
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "1.2.3");
-    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1 });
+    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, failed: 0 });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string; t: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "1.2.3");
   } finally {
@@ -86,7 +86,7 @@ test("resolveVersions：TTL 内直接命中缓存，不再发请求", async () =
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "2.0.0");
     assert.equal(fetchStub.calls.length, 0);
-    assert.deepEqual(result, { hits: 1, cached: 1, queried: 0 });
+    assert.deepEqual(result, { hits: 1, cached: 1, queried: 0, failed: 0 });
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
@@ -116,10 +116,49 @@ test("resolveVersions：查询失败保留旧版本，缓存不动", async () =>
   const fetchStub = stubFetch(() => json({ error: "boom" }, 500));
   try {
     const item = entry({ version: "1.0.0" });
-    await resolveVersions([item], dir);
+    const result = await resolveVersions([item], dir);
     assert.equal(item.version, "1.0.0");
+    // 5xx 会重试一次，仍失败才放弃
+    assert.equal(fetchStub.calls.length, 2);
+    assert.equal(result.failed, 1);
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "1.0.0");
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：首次请求失败后重试成功", async () => {
+  const dir = tempDir();
+  let round = 0;
+  const fetchStub = stubFetch(() => {
+    round += 1;
+    return round === 1 ? json({ error: "busy" }, 503) : json({ version: "0.5.1" });
+  });
+  try {
+    const item = entry({ version: "0.5.0" });
+    const result = await resolveVersions([item], dir);
+    assert.equal(item.version, "0.5.1");
+    assert.equal(fetchStub.calls.length, 2);
+    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, failed: 0 });
+    const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
+    assert.equal(cache["npm:some-plugin"]?.v, "0.5.1");
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：404 属确定性失败，不重试", async () => {
+  const dir = tempDir();
+  const fetchStub = stubFetch(() => json({ error: "not found" }, 404));
+  try {
+    const item = entry();
+    const result = await resolveVersions([item], dir);
+    assert.equal(item.version, null);
+    assert.equal(fetchStub.calls.length, 1);
+    assert.equal(result.failed, 1);
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });

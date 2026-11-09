@@ -451,7 +451,7 @@ async function main(): Promise<void> {
   const versionHits = await resolveVersions(active);
   log(
     args.silent,
-    `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包）`,
+    `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包 / 失败 ${versionHits.failed}）`,
   );
 
   // 下载量同样要在写产物之前补全 —— lite 切片要带 dl 字段。
