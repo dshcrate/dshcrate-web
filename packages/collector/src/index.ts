@@ -449,7 +449,10 @@ async function main(): Promise<void> {
 
   // 版本号补齐必须发生在写产物之前 —— lite 切片要带 vr 字段。
   const versionHits = await resolveVersions(active);
-  log(args.silent, `[collector] 版本号命中 ${versionHits} 条`);
+  log(
+    args.silent,
+    `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包）`,
+  );
 
   // 下载量同样要在写产物之前补全 —— lite 切片要带 dl 字段。
   const downloads = await resolveDownloads(active);

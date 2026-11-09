@@ -1,20 +1,30 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { PluginEntry } from "@dsh-crate/schema";
+import { DATA_DIR } from "./config.ts";
 
 /**
- * 补全插件自身版本号（不是 dsh 兼容范围）。
+ * 补全并刷新插件自身版本号（不是 dsh 兼容范围）。
  *
  * 三条来源，按可靠度排序：
  *   1. 安装规格里钉死的版本（`add foo@0.5.6`）—— 装上去就是这个版本，直接用；
  *   2. npm registry 的 latest（`add foo` / `add foo@latest`）；
  *   3. 没有 npm 规格的（`github:owner/repo` 或上游压根没写安装命令）读仓库根 package.json。
  *
- * 取不到就保持 null，前端不显示版本，绝不用兼容范围冒充版本号。
+ * 缓存：`.data/versions-cache.json`，形如
+ * `{ "npm:dshmarket": { "v": "1.73.16", "t": "2026-11-09" } }`。
+ * TTL 取 1 天，和每日构建对齐：每个包每天重查一次，过期的才发请求。
+ * 查询失败时保留条目上一轮的版本，缓存也保持原样，下一轮再试。
  */
 
 const REGISTRY = "https://registry.npmjs.org";
 const RAW = "https://raw.githubusercontent.com";
 const CONCURRENCY = 48;
 const TIMEOUT_MS = 8000;
+const DAY = 86_400_000;
+/** 版本缓存有效期：站点每天构建一次，正好让每个包每天刷新一次。 */
+const TTL_DAYS = 1;
+const CACHE_FILE = "versions-cache.json";
 
 type Spec =
   | { kind: "exact"; version: string }
@@ -22,7 +32,29 @@ type Spec =
   | { kind: "github"; owner: string; repo: string }
   | null;
 
+/** 需要联网查询的两种规格；`exact` 不在此列。 */
+type LookupSpec = Exclude<NonNullable<Spec>, { kind: "exact" }>;
+
 const EXACT = /^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/;
+
+/** 版本号刷新统计。 */
+export interface VersionResolveResult {
+  /** 最终带版本号的条目数。 */
+  hits: number;
+  /** 直接命中缓存的条目数。 */
+  cached: number;
+  /** 实际查询的包数（npm 包名或仓库）。 */
+  queried: number;
+}
+
+interface CacheRow {
+  /** version */
+  v: string;
+  /** 查询日期 YYYY-MM-DD */
+  t: string;
+}
+
+type Cache = Record<string, CacheRow>;
 
 function parseSpec(spec: string | null): Spec {
   if (!spec) return null;
@@ -70,55 +102,105 @@ const repoVersion = async (owner: string, repo: string): Promise<string | null> 
   return /^0\.0\.0?$/.test(v) ? null : v;
 };
 
-/** 就地写入 entry.version。返回命中条数。 */
-export async function resolveVersions(entries: PluginEntry[]): Promise<number> {
-  const pending: PluginEntry[] = [];
-  let hits = 0;
-
-  for (const e of entries) {
-    if (e.version) { hits++; continue; }
-    const spec = parseSpec(e.install.packageName);
-    if (spec?.kind === "exact") { e.version = spec.version; hits++; continue; }
-    pending.push(e);
+/** 读取缓存；文件缺失或损坏都当作空缓存。 */
+function loadCache(dir: string): Cache {
+  const file = resolve(dir, CACHE_FILE);
+  if (!existsSync(file)) return {};
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as Cache) : {};
+  } catch {
+    return {};
   }
+}
 
-  // 同一个源只查一次：npm 包名 / 仓库名 / 兜底用的仓库名，查完回填。
-  const targetOf = (e: PluginEntry): { key: string; spec: NonNullable<Spec> } => {
-    const spec = parseSpec(e.install.packageName);
-    if (spec && spec.kind !== "exact") {
-      const key = spec.kind === "npm" ? `npm:${spec.pkg}` : `gh:${spec.owner}/${spec.repo}`;
-      return { key, spec };
-    }
-    // 没写 npm 规格：退回仓库本身
-    const slash = e.fullName.indexOf("/");
-    return {
-      key: `gh:${e.fullName}`,
-      spec: { kind: "github", owner: e.fullName.slice(0, slash), repo: e.fullName.slice(slash + 1) },
-    };
-  };
+function saveCache(dir: string, cache: Cache): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(resolve(dir, CACHE_FILE), JSON.stringify(cache), "utf8");
+}
 
-  const groups = new Map<string, { spec: NonNullable<Spec>; entries: PluginEntry[] }>();
-  for (const e of pending) {
-    const { key, spec } = targetOf(e);
-    const g = groups.get(key);
-    if (g) g.entries.push(e);
-    else groups.set(key, { spec, entries: [e] });
+function isFresh(day: string): boolean {
+  const at = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(at)) return false;
+  return Date.now() - at < TTL_DAYS * DAY;
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** 条目对应的查询目标：npm 包名或仓库，兼顾「没写 npm 规格」的兜底。 */
+function targetOf(entry: PluginEntry): { key: string; spec: LookupSpec } {
+  const spec = parseSpec(entry.install.packageName);
+  if (spec !== null && spec.kind !== "exact") {
+    const key = spec.kind === "npm" ? `npm:${spec.pkg}` : `gh:${spec.owner}/${spec.repo}`;
+    return { key, spec };
   }
+  // 没写 npm 规格：退回仓库本身
+  const slash = entry.fullName.indexOf("/");
+  const owner = entry.fullName.slice(0, slash);
+  const repo = entry.fullName.slice(slash + 1);
+  return { key: `gh:${owner}/${repo}`, spec: { kind: "github", owner, repo } };
+}
 
-  const keys = [...groups.keys()];
+interface PendingGroup {
+  key: string;
+  spec: LookupSpec;
+  entries: PluginEntry[];
+}
+
+/** 并发刷新过期分组；返回实际查询的包数。 */
+async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<number> {
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(CONCURRENCY, keys.length) }, async () => {
-    while (cursor < keys.length) {
-      const group = groups.get(keys[cursor++]!)!;
+  let queried = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, pending.length) }, async () => {
+    while (cursor < pending.length) {
+      const group = pending[cursor]!;
+      cursor += 1;
+      queried += 1;
       const spec = group.spec;
-      let version: string | null = null;
-      if (spec.kind === "npm") version = await latestVersion(spec.pkg);
-      else if (spec.kind === "github") version = await repoVersion(spec.owner, spec.repo);
-      if (!version) continue;
-      for (const e of group.entries) { e.version = version; hits++; }
+      const version = spec.kind === "npm"
+        ? await latestVersion(spec.pkg)
+        : await repoVersion(spec.owner, spec.repo);
+      if (version === null) continue;
+      for (const entry of group.entries) entry.version = version;
+      cache[group.key] = { v: version, t: today() };
     }
   });
   await Promise.all(workers);
+  return queried;
+}
 
-  return hits;
+/** 就地写入 entry.version，过期条目重新查询并回填缓存。 */
+export async function resolveVersions(
+  entries: PluginEntry[],
+  dir: string = DATA_DIR,
+): Promise<VersionResolveResult> {
+  const cache = loadCache(dir);
+  const pending = new Map<string, PendingGroup>();
+  let cached = 0;
+
+  for (const entry of entries) {
+    const spec = parseSpec(entry.install.packageName);
+    if (spec?.kind === "exact") {
+      entry.version = spec.version;
+      continue;
+    }
+    const { key, spec: target } = targetOf(entry);
+    const row = cache[key];
+    if (row !== undefined && typeof row.v === "string" && row.v !== "" && isFresh(row.t)) {
+      entry.version = row.v;
+      cached += 1;
+      continue;
+    }
+    const group = pending.get(key);
+    if (group) group.entries.push(entry);
+    else pending.set(key, { key, spec: target, entries: [entry] });
+  }
+
+  const queried = await refreshPending([...pending.values()], cache);
+  if (queried > 0) saveCache(dir, cache);
+
+  const hits = entries.filter(entry => entry.version !== null && entry.version !== "").length;
+  return { hits, cached, queried };
 }

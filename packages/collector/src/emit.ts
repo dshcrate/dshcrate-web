@@ -351,6 +351,8 @@ export function syncToWebPublic(): void {
       !src.endsWith("/catalog.json") &&
       !src.endsWith("\\catalog.json") &&
       !src.endsWith("/npm-publish-times.json") &&
-      !src.endsWith("\\npm-publish-times.json"),
+      !src.endsWith("\\npm-publish-times.json") &&
+      !src.endsWith("/versions-cache.json") &&
+      !src.endsWith("\\versions-cache.json"),
   });
 }
