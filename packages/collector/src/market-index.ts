@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { PluginEntry, PluginType } from "@dsh-shelfry/schema";
+import type { PluginEntry, PluginType } from "@dsh-crate/schema";
 
 import { DATA_DIR } from "./config.ts";
 
@@ -17,7 +17,7 @@ const TIMEOUT_MS = 10_000;
 /** 官方构建脚本对描述的上限。 */
 const DESCRIPTION_LIMIT = 160;
 /** 站内详情页地址前缀。 */
-const ORIGIN = "https://shelfry.app";
+const ORIGIN = "https://dshcrate.com";
 /** 合法 npm 包名（新包名一律小写）。 */
 const NPM_NAME = /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/;
 /** 钉死的精确版本，如 1.2.3 / v1.2.3 / 1.2.3-beta.1。 */
@@ -222,10 +222,10 @@ export function buildOfficialIndex(
     .map((item) => item.plugin);
   const index: OfficialIndex = {
     format: OFFICIAL_FORMAT,
-    title: { en: "Shelfry DSH Plugins", zh: "Shelfry DSH 插件目录" },
+    title: { en: "DSH Crate Plugins", zh: "DSH Crate 插件目录" },
     description: {
-      en: "DSH plugins indexed by shelfry.app.",
-      zh: "shelfry.app 收录的 DSH 插件目录。",
+      en: "DSH plugins indexed by dshcrate.com.",
+      zh: "dshcrate.com 收录的 DSH 插件目录。",
     },
     metadata: { categories: CATEGORY_TITLES },
     plugins,

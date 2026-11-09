@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { MarketFile, PluginEntry } from "@dsh-shelfry/schema";
+import type { MarketFile, PluginEntry } from "@dsh-crate/schema";
 
 import { pickMarketAll, pickMarketTop, writeMarketAll, writeMarketTop } from "./emit.ts";
 
@@ -125,18 +125,21 @@ test("pickMarketAll：缺 id 的条目跳过，空输入返回空切片", () => 
   assert.deepEqual(pickMarketAll([]), []);
 });
 
-test("writeMarketAll：落盘 dsh-shelfry.json，全量且含元信息", () => {
+test("writeMarketAll：落盘 dsh-crate.json 并保留 dsh-shelfry.json 兼容副本", () => {
   const dir = mkdtempSync(join(tmpdir(), "market-all-"));
   try {
     const entries = [entry("a/one", 40), entry("b/two", 90), entry("c/three", 65)];
     const out = writeMarketAll(entries, dir);
     assert.equal(out.total, 3);
-    assert.equal(out.file, join(dir, "dsh-shelfry.json"));
+    assert.equal(out.file, join(dir, "dsh-crate.json"));
     const payload = JSON.parse(readFileSync(out.file, "utf8")) as MarketFile;
     assert.equal(payload.total, 3);
     assert.equal(typeof payload.schemaVersion, "number");
     assert.equal(typeof payload.generatedAt, "string");
     assert.deepEqual(payload.entries.map((e) => e.i), ["b/two", "c/three", "a/one"]);
+    // 旧文件名必须同时存在，0.4.x 客户端还在读它
+    const legacy = JSON.parse(readFileSync(join(dir, "dsh-shelfry.json"), "utf8")) as MarketFile;
+    assert.deepEqual(legacy.entries.map((e) => e.i), payload.entries.map((e) => e.i));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

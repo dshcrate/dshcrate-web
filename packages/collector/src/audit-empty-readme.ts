@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 import { REPO_ROOT } from "./config.ts";
 import { isPurgeCandidate, resolveEmptyReadme } from "./readme-gate.ts";
@@ -16,7 +16,7 @@ import { loadCatalog } from "./store.ts";
  * 要清退当前站点上的条目，必须加 --from-site 读同一份明细分片。
  */
 
-const SITE_BASE = "https://shelfry.app/data";
+const SITE_BASE = "https://dshcrate.com/data";
 const PURGE_FILE = resolve(REPO_ROOT, "curation/purge.json");
 const FETCH_RETRIES = 3;
 

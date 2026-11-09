@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ArtifactIndex, CatalogMeta, LiteEntry, PluginType } from "@dsh-shelfry/schema";
+import type { ArtifactIndex, CatalogMeta, LiteEntry, PluginType } from "@dsh-crate/schema";
 import { Link, useSearchParams } from "react-router-dom";
 import { PluginCard } from "../components/PluginCard";
 import { CardSkeleton } from "../components/CardSkeleton";

@@ -109,7 +109,7 @@ export async function fetchCatalogIndex(): Promise<CatalogIndex | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(CATALOG_URL, {
-        headers: { "user-agent": "dsh-shelfry-collector" },
+        headers: { "user-agent": "dsh-crate-collector" },
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

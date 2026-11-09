@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { LiteEntry } from "@dsh-shelfry/schema";
+import type { LiteEntry } from "@dsh-crate/schema";
 import { PluginCard } from "../components/PluginCard";
 import { CardSkeleton } from "../components/CardSkeleton";
 import { loadCategories, loadLite } from "../lib/data";

@@ -1,5 +1,5 @@
-import type { ArtifactIndex } from "@dsh-shelfry/schema";
-import { SCHEMA_VERSION, type PluginEntry } from "@dsh-shelfry/schema";
+import type { ArtifactIndex } from "@dsh-crate/schema";
+import { SCHEMA_VERSION, type PluginEntry } from "@dsh-crate/schema";
 import { loadCatalog, mergeEntries, saveCatalog, catalogPath } from "./store.ts";
 import {
   buildMeta,

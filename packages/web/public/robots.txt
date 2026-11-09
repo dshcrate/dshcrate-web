@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /favorites
 
-Sitemap: https://shelfry.app/sitemap.xml
+Sitemap: https://dshcrate.com/sitemap.xml

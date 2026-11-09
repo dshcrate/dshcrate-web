@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { normalizeGitHubRepo } from "@dsh-shelfry/schema";
+import { normalizeGitHubRepo } from "@dsh-crate/schema";
 import { loadCollectedIds } from "../lib/data";
 import { useT } from "../lib/i18n";
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CatalogMeta, LiteEntry } from "@dsh-shelfry/schema";
+import type { CatalogMeta, LiteEntry } from "@dsh-crate/schema";
 import { Link } from "react-router-dom";
 import { loadLite, loadMeta } from "../lib/data";
 import { Avatar, formatDownloads, formatStars, relativeTime, versionLabel } from "../components/PluginCard";

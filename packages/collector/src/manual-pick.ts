@@ -1,4 +1,4 @@
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 /**
  * 站长点名收录的条目。

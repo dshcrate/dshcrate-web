@@ -1,4 +1,4 @@
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 /**
  * 补全插件自身版本号（不是 dsh 兼容范围）。

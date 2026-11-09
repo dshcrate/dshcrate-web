@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 import {
   assertOfficialIndex,
@@ -69,7 +69,7 @@ test("buildOfficialIndex：合格条目按官方字段输出", () => {
   assert.equal(plugin?.name, "pkg");
   assert.equal(plugin?.title, "owner/pkg");
   assert.equal(plugin?.description, "上游简介");
-  assert.equal(plugin?.homepage, "https://shelfry.app/p/owner/pkg");
+  assert.equal(plugin?.homepage, "https://dshcrate.com/p/owner/pkg");
   assert.deepEqual(plugin?.repository, { url: "https://github.com/owner/pkg" });
   assert.deepEqual(plugin?.metadata, { category: "plugin" });
   assert.deepEqual(plugin?.versions, [
@@ -173,7 +173,7 @@ test("assertOfficialIndex：拒绝未声明的分类与空列表", () => {
 });
 
 test("writeOfficialIndex：写入临时目录的 index.json，且不落缓存文件", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "shelfry-index-"));
+  const dir = mkdtempSync(join(tmpdir(), "crate-index-"));
   try {
     const result = await writeOfficialIndex([entry("owner/pkg")], dir, TIMES);
     assert.equal(result.total, 1);
@@ -188,7 +188,7 @@ test("writeOfficialIndex：写入临时目录的 index.json，且不落缓存文
 });
 
 test("writeOfficialIndex：一条都不合格时报错，不写空文件", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "shelfry-index-"));
+  const dir = mkdtempSync(join(tmpdir(), "crate-index-"));
   try {
     await assert.rejects(() => writeOfficialIndex([entry("owner/pkg", { version: null })], dir, TIMES), /plugins 不能为空/);
     assert.equal(existsSync(join(dir, "index.json")), false);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { LiteEntry, PluginEntry } from "@dsh-shelfry/schema";
+import type { LiteEntry, PluginEntry } from "@dsh-crate/schema";
 import { loadArtifacts, loadCategories, loadEntryById, loadLite, siteConfig, type Category } from "../lib/data";
 import { Avatar, formatDownloads, formatStars, PluginCard, relativeTime, versionLabel } from "../components/PluginCard";
 import { copyText } from "../lib/clipboard";

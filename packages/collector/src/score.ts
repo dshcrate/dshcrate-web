@@ -1,4 +1,4 @@
-import type { PluginEntry, ScoreBreakdown } from "@dsh-shelfry/schema";
+import type { PluginEntry, ScoreBreakdown } from "@dsh-crate/schema";
 
 /**
  * 综合分：加权几何平均。

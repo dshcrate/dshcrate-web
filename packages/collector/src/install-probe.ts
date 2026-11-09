@@ -1,4 +1,4 @@
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DATA_DIR } from "./config.ts";

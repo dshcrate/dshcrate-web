@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import type { LiteEntry } from "@dsh-shelfry/schema";
+import type { LiteEntry } from "@dsh-crate/schema";
 import { Link } from "react-router-dom";
 import { detailPath, loadArtifacts, loadEntryById } from "../lib/data";
 import { copyText } from "../lib/clipboard";

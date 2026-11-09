@@ -1,4 +1,4 @@
-import type { LiteEntry } from "@dsh-shelfry/schema";
+import type { LiteEntry } from "@dsh-crate/schema";
 import Fuse from "fuse.js";
 
 /**

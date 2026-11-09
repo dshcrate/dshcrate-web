@@ -3,8 +3,8 @@ import type {
   InstallSpec,
   PluginEntry,
   PluginType,
-} from "@dsh-shelfry/schema";
-import { defaultInstallCommand } from "@dsh-shelfry/schema";
+} from "@dsh-crate/schema";
+import { defaultInstallCommand } from "@dsh-crate/schema";
 import { scoreEntry } from "./score.ts";
 
 /** 上游 lite 记录的松散形状（我们只读取需要的字段，不做强校验）。 */

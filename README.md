@@ -1,11 +1,11 @@
 # DSH 插件集市
 
-**[shelfry.app](https://shelfry.app)**
+**[dshcrate.com](https://dshcrate.com)**
 
 DeepSeek Harness（DSH）插件与工具目录，收录 20000+ 个仓库，每日自动刷新。
 不用再去 GitHub 一条条翻 README —— 打开就能按星标、下载量和更新活跃度看清哪个值得装。
 
-![DSH 插件集市](https://shelfry.app/og.png)
+![DSH 插件集市](https://dshcrate.com/og.png)
 
 ## 能帮你做什么
 
@@ -24,7 +24,7 @@ DeepSeek Harness（DSH）插件与工具目录，收录 20000+ 个仓库，每�
 
 ## 三步开始
 
-1. 打开 **[shelfry.app](https://shelfry.app)**，搜索想找的功能，或从分类里浏览
+1. 打开 **[dshcrate.com](https://dshcrate.com)**，搜索想找的功能，或从分类里浏览
 2. 在卡片上点「安装」，复制命令
 3. 粘贴进终端执行
 
@@ -32,8 +32,8 @@ DeepSeek Harness（DSH）插件与工具目录，收录 20000+ 个仓库，每�
 
 收录是自动的，另外有两条主动通道：
 
-- 站内 **[提交插件](https://shelfry.app/submit)**：填上仓库地址即可，审核后会出现在目录里
-- GitHub Issue：**[新建 Issue](https://github.com/shelfry/shelfry-web/issues/new)**，标题以 `[插件提交]` 开头，正文写清仓库地址与安装方式，会自动同步进待审核列表
+- 站内 **[提交插件](https://dshcrate.com/submit)**：填上仓库地址即可，审核后会出现在目录里
+- GitHub Issue：**[新建 Issue](https://github.com/dshcrate/dshcrate-web/issues/new)**，标题以 `[插件提交]` 开头，正文写清仓库地址与安装方式，会自动同步进待审核列表
 
 收录标准：上游仓库需明确写出 `dsh add` / `dsh install` 安装规格；全局安装命令与无效规格不会被收录。
 

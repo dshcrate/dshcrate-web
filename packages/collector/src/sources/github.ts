@@ -134,7 +134,7 @@ async function searchPage(
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${token}`,
-      "user-agent": "dsh-shelfry-collector",
+      "user-agent": "dsh-crate-collector",
       "x-github-api-version": "2022-11-28",
     },
   });
@@ -173,7 +173,7 @@ export async function fetchReposByNames(names: string[], token: string): Promise
           headers: {
             accept: "application/vnd.github+json",
             authorization: `Bearer ${token}`,
-            "user-agent": "dsh-shelfry-collector",
+            "user-agent": "dsh-crate-collector",
             "x-github-api-version": "2022-11-28",
           },
           signal: AbortSignal.timeout(15000),

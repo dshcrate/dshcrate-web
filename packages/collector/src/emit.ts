@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ArtifactIndex, CatalogMeta, LiteEntry, MarketEntry, MarketFile, PluginEntry } from "@dsh-shelfry/schema";
-import { INDEX_SHARD_COUNT, SCHEMA_VERSION, indexShardId, toLiteEntry } from "@dsh-shelfry/schema";
+import type { ArtifactIndex, CatalogMeta, LiteEntry, MarketEntry, MarketFile, PluginEntry } from "@dsh-crate/schema";
+import { INDEX_SHARD_COUNT, SCHEMA_VERSION, indexShardId, toLiteEntry } from "@dsh-crate/schema";
 import { DATA_DIR, WEB_PUBLIC_DATA_DIR } from "./config.ts";
 
 /**
@@ -15,7 +15,7 @@ import { DATA_DIR, WEB_PUBLIC_DATA_DIR } from "./config.ts";
  *   index/<NNN>.json              倒排索引分片（token 哈希落片，搜索时只载命中片）
  *   artifacts.json                产物清单（web 先读它，再按需拉具体片）
  *   market-top.json               插件市场切片（DSH 客户端内嵌面板直连，top N 条）
- *   dsh-shelfry.json              插件市场全量切片（结构同 market-top，不截断，按 id 去重）
+ *   dsh-crate.json                插件市场全量切片（结构同 market-top，不截断，按 id 去重）
  */
 
 const DETAIL_SHARD_SIZE = 500;
@@ -312,7 +312,10 @@ export function writeMarketTop(
 }
 
 /**
- * 写全量市场切片文件 data/dsh-shelfry.json（结构与 market-top 一致，不截断）。
+ * 写全量市场切片文件 data/dsh-crate.json（结构与 market-top 一致，不截断）。
+ *
+ * 同时写一份 data/dsh-shelfry.json 兼容副本：0.4.x 客户端仍按旧文件名拉取，
+ * 升级完成前不能断。
  *
  * 入参：
  * - entries：全量条目
@@ -330,8 +333,9 @@ export function writeMarketAll(
     total: picked.length,
     entries: picked,
   };
-  const file = resolve(dir, "dsh-shelfry.json");
+  const file = resolve(dir, "dsh-crate.json");
   writeJson(file, payload);
+  writeJson(resolve(dir, "dsh-shelfry.json"), payload);
   return { file, total: picked.length };
 }
 

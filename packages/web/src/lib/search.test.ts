@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { LiteEntry } from "@dsh-shelfry/schema";
+import type { LiteEntry } from "@dsh-crate/schema";
 
 import { createSearcher, isRepoQuery, normalizeQuery, rankHits } from "./search.ts";
 

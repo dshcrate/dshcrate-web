@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-shelfry/collector",
+  "name": "@dsh-crate/collector",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "./emit": "./src/emit.ts"
   },
   "dependencies": {
-    "@dsh-shelfry/schema": "*"
+    "@dsh-crate/schema": "*"
   },
   "scripts": {
     "collect": "tsx src/index.ts",

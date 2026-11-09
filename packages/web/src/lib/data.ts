@@ -1,4 +1,4 @@
-import type { ArtifactIndex, CatalogMeta, LiteEntry, PluginEntry } from "@dsh-shelfry/schema";
+import type { ArtifactIndex, CatalogMeta, LiteEntry, PluginEntry } from "@dsh-crate/schema";
 import { pickCategories, type CatalogBootstrap } from "./bootstrap";
 import { resolveEntryId } from "./idmap";
 

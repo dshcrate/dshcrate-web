@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-shelfry/schema",
+  "name": "@dsh-crate/schema",
   "version": "0.1.0",
   "private": true,
   "type": "module",

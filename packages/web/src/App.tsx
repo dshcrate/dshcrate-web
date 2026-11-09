@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
-import type { CatalogMeta } from "@dsh-shelfry/schema";
+import type { CatalogMeta } from "@dsh-crate/schema";
 import { loadMeta, siteConfig } from "./lib/data";
 import { useT } from "./lib/i18n";
 import HomePage, { SiteHeader } from "./pages/HomePage";

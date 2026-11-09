@@ -1,4 +1,4 @@
-import type { CatalogMeta } from "@dsh-shelfry/schema";
+import type { CatalogMeta } from "@dsh-crate/schema";
 import type { CatalogScope, Category } from "./data";
 
 /**

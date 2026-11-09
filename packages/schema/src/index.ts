@@ -117,7 +117,7 @@ export interface MarketEntry {
   /** 我方规范化安装命令 */ cmd: string | null;
 }
 
-/** 市场切片文件（data/market-top.json 与全量的 data/dsh-shelfry.json 共用此结构）。 */
+/** 市场切片文件（data/market-top.json 与全量的 data/dsh-crate.json 共用此结构）。 */
 export interface MarketFile {
   schemaVersion: number;
   generatedAt: string;

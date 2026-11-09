@@ -1,4 +1,4 @@
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 /**
  * 「借来的包名」清洗。

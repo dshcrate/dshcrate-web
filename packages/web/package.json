@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-shelfry/web",
+  "name": "@dsh-crate/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
-    "@dsh-shelfry/schema": "*",
+    "@dsh-crate/schema": "*",
     "dompurify": "^3.4.17",
     "fuse.js": "^7.5.0",
     "marked": "^18.1.1",

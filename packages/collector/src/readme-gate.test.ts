@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 
 import { classifyReadmeBody, isPresenceFresh, isPurgeCandidate, readmeStateFrom } from "./readme-gate.ts";
 

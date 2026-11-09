@@ -1,5 +1,5 @@
 {
-  "name": "shelfry-web",
+  "name": "dshcrate-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,9 @@
     "collect": "tsx packages/collector/src/index.ts",
     "build:data": "tsx packages/collector/src/index.ts --build",
     "build:site": "npm run collect -- --source auto --build && npm run build",
-    "dev": "npm run dev -w @dsh-shelfry/web",
-    "build": "npm run build -w @dsh-shelfry/web",
-    "preview": "npm run preview -w @dsh-shelfry/web",
+    "dev": "npm run dev -w @dsh-crate/web",
+    "build": "npm run build -w @dsh-crate/web",
+    "preview": "npm run preview -w @dsh-crate/web",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test packages/collector/src/*.test.ts packages/collector/src/sources/*.test.ts packages/web/src/lib/*.test.ts",
     "audit:empty-readme": "tsx packages/collector/src/audit-empty-readme.ts"

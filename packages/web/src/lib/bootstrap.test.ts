@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CatalogMeta } from "@dsh-shelfry/schema";
+import type { CatalogMeta } from "@dsh-crate/schema";
 
 import { pickCategories, type CatalogBootstrap } from "./bootstrap.ts";
 

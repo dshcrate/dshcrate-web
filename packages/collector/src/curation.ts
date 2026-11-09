@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { normalizeGitHubRepo } from "@dsh-shelfry/schema";
+import { normalizeGitHubRepo } from "@dsh-crate/schema";
 import { REPO_ROOT } from "./config.ts";
 
 /**

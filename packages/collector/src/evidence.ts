@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { PluginEntry } from "@dsh-shelfry/schema";
+import type { PluginEntry } from "@dsh-crate/schema";
 import { DATA_DIR } from "./config.ts";
 import { scoreEntry } from "./score.ts";
 import { findStandaloneCommand, type StandaloneHit } from "./standalone.ts";
@@ -63,7 +63,7 @@ const RAW = "https://raw.githubusercontent.com";
 const TIMEOUT_MS = 12000;
 const HEADERS = {
   accept: "*/*",
-  "user-agent": "dsh-shelfry-collector/1.0 (+https://shelfry.app)",
+  "user-agent": "dsh-crate-collector/1.0 (+https://dshcrate.com)",
 };
 
 const SKILL_CMD = /dsh\s+skill\s+add/i;
