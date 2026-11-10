@@ -22,7 +22,7 @@ import { resolveVersions } from "./versions.ts";
 import { resolveDownloads } from "./downloads.ts";
 import { writeOfficialIndex } from "./market-index.ts";
 import { clearBorrowedPackageInfo } from "./identity.ts";
-import { isPlaceholderSpec, resolveEvidence, writeDroppedList } from "./evidence.ts";
+import { isPlaceholderCommand, isPlaceholderSpec, resolveEvidence, writeDroppedList } from "./evidence.ts";
 import { isAuthError } from "./token-guard.ts";
 import { isManualPick } from "./manual-pick.ts";
 import { resolveInstallCommands } from "./install-probe.ts";
@@ -339,15 +339,17 @@ async function main(): Promise<void> {
     `[collector] 安装命令补全：探测 ${probe.probed} 条 / 缓存命中 ${probe.cached} 条 / 补出 DSH 命令 ${probe.dsh} 条 / 上游安装器 ${probe.native} 条`,
   );
 
-  // README 模板里的占位规格（github:<owner>/<repo> 等）不是真实地址。
+  // README 模板里的占位规格（github:<owner>/<repo>、#<40位commit> 等）不是真实地址。
   // 放在补全之后清：探测本身也可能从 README 再补回占位命令。
+  // 包名与命令都要查：有些条目包名为空，占位符只出现在命令里。
   let placeholderCmd = 0;
   for (const e of active) {
-    const pkg = e.install.packageName;
-    if (!pkg || !isPlaceholderSpec(pkg)) continue;
+    const { packageName, command } = e.install;
+    const placeholder = (packageName !== null && isPlaceholderSpec(packageName)) || isPlaceholderCommand(command);
+    if (!placeholder) continue;
     e.install.command = null;
     e.install.packageName = null;
-    if (e.install.method === "pnpm-profile") e.install.method = "unknown";
+    e.install.method = "unknown";
     placeholderCmd++;
   }
   if (placeholderCmd > 0) log(args.silent, `[collector] 清除 ${placeholderCmd} 条占位安装命令`);

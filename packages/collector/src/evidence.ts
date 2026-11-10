@@ -90,6 +90,15 @@ export function packageNameOfSpec(spec: string): string {
 export const isPlaceholderSpec = (spec: string): boolean =>
   /^github:(owner|user|username|your[-_]?name|xxx)\//i.test(spec) || /<[^>]+>/.test(spec);
 
+/**
+ * 安装命令里是否带占位模板。
+ *
+ * `#<40位commit>`、`github:<owner>/<repo>` 这类命令复制出去装不上；
+ * 但 `bash <(curl …)` 是合法的进程替换，不能误判。
+ */
+export const isPlaceholderCommand = (command: string | null): boolean =>
+  !!command && command.includes("<") && !command.includes("<(");
+
 /** 名字或简介里已经带 dsh 生态字样的，无需实证。 */
 export function nameSaysDsh(fullName: string, description: string | null): boolean {
   return LOOSE.test(`${fullName} ${description ?? ""}`);
