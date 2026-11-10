@@ -86,16 +86,30 @@ export function extractInstallSpec(commands: string[]): string | null {
   return null;
 }
 
+/** 合法 npm 名：可带 scope，可带 @版本 / 标签 / ^~ 范围。 */
+const NPM_SPEC = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:@[a-z0-9.^~*+_-]+)?$/i;
+
+/**
+ * 安装规格是否可用（能生成一条装得上的命令）。
+ *
+ * 只放行 npm 包名与 pnpm 原生支持的远程规格；含空格、尖括号、中文、括号、
+ * 裸斜杠（owner/repo）的一律拒绝 —— 这些通常来自中文安装说明被误当成包名。
+ */
+export function isUsableInstallSpec(spec: string): boolean {
+  if (!spec) return false;
+  if (/^(github:|git\+|git:|https:|ssh:)/.test(spec)) return true;
+  return NPM_SPEC.test(spec);
+}
+
 function normalizeSpec(spec: string): string | null {
   if (!spec) return null;
   // 本地路径 / 工作区引用：无法用一条安装命令验证。
   if (/^(link:|file:|workspace:|portal:|\.{1,2}\/|\/)/.test(spec)) return null;
-  if (spec.startsWith("npm:")) return spec.slice(4) || null;
-  // 远程规格：pnpm 原生支持，原样透传。
-  if (/^(github:|git\+|git:|https?:|ssh:)/.test(spec)) return spec;
-  // 普通 npm 包名（可带 scope），可带 @版本 / @标签。
-  if (/^(@[a-z0-9._-]+\/)?[a-z0-9][a-z0-9._-]*(@[a-z0-9][a-z0-9._-]*)?$/i.test(spec)) return spec;
-  return null;
+  if (spec.startsWith("npm:")) {
+    const name = spec.slice(4);
+    return isUsableInstallSpec(name) ? name : null;
+  }
+  return isUsableInstallSpec(spec) ? spec : null;
 }
 
 function toMethod(v: unknown): InstallMethod {
@@ -137,8 +151,13 @@ export function normalizeRecord(raw: RawRecord, now: Date, prev?: PluginEntry): 
 
   // 检索源给不出安装规格与类型：这两种字段缺失时沿用上一轮结论，
   // 否则一次 GitHub 检索就会把镜像源已经解析好的安装命令和 skill 类型冲掉。
+  // 上一轮的包名可能是历史脏数据（中文说明、<目录>、owner/repo），不合法就不继承。
   const freshInstall = buildInstall(installRaw);
-  const install = freshInstall.command ? freshInstall : (prev?.install ?? freshInstall);
+  let install = freshInstall;
+  if (!freshInstall.command && prev) {
+    const prevPkg = prev.install.packageName;
+    if (prevPkg === null || isUsableInstallSpec(prevPkg)) install = prev.install;
+  }
   // 类型不用 prev.type：被污染过的结论会永久固化（实测 703 条 skill 里 463 条是误判，
   // 撤规则后 prev 仍把它们当 skill）。改用唯一可靠判据 —— 安装方式 skills-add。
   const tags = strArr(raw.tags);

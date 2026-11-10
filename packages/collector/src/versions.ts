@@ -54,6 +54,16 @@ type LookupSpec = Exclude<NonNullable<Spec>, { kind: "exact" }>;
 type FailureKind = "missing" | "throttled" | "unreachable";
 
 const EXACT = /^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/;
+/** 合法 npm 包名（可带 scope）；历史脏数据（中文说明、<目录>、owner/repo）不查。 */
+const NPM_NAME = /^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/i;
+
+/** 单个域名的查询分类计数。 */
+export interface HostStats {
+  queried: number;
+  missing: number;
+  throttled: number;
+  unreachable: number;
+}
 
 /** 版本号刷新统计。 */
 export interface VersionResolveResult {
@@ -71,6 +81,8 @@ export interface VersionResolveResult {
   unreachable: number;
   /** 失败样例（key#原因），最多 5 条，供构建日志定位。 */
   samples: string[];
+  /** 按域名拆开的分类计数：npm=registry.npmjs.org，raw=raw.githubusercontent.com。 */
+  byHost: { npm: HostStats; raw: HostStats };
 }
 
 interface CacheRow {
@@ -96,6 +108,8 @@ function parseSpec(spec: string | null): Spec {
   const name = at > 0 ? spec.slice(0, at) : spec;
   const range = at > 0 ? spec.slice(at + 1) : "";
   if (!name) return null;
+  // 不是合法 npm 名（`<目录`、`只装不构建）`、`owner/repo` 之类）就别发请求，回退读仓库。
+  if (!NPM_NAME.test(name)) return null;
 
   if (EXACT.test(range)) return { kind: "exact", version: range.replace(/^v/, "") };
   return { kind: "npm", pkg: name };
@@ -201,17 +215,23 @@ interface PendingGroup {
   entries: PluginEntry[];
 }
 
-/** 一组查询的统计；samples 只在限流/网络失败时记录。 */
-interface RefreshStats {
-  queried: number;
-  missing: number;
-  throttled: number;
-  unreachable: number;
+/** 单池统计；samples 只在限流/网络失败时记录。 */
+interface RefreshStats extends HostStats {
   samples: string[];
 }
 
 function emptyStats(): RefreshStats {
   return { queried: 0, missing: 0, throttled: 0, unreachable: 0, samples: [] };
+}
+
+/** 去掉样例，只留计数，供 byHost 使用。 */
+function hostStats(stats: RefreshStats): HostStats {
+  return {
+    queried: stats.queried,
+    missing: stats.missing,
+    throttled: stats.throttled,
+    unreachable: stats.unreachable,
+  };
 }
 
 /** 单池并发消费：固定并发数，直到队列取空。 */
@@ -243,8 +263,11 @@ async function runPool(groups: PendingGroup[], concurrency: number, cache: Cache
   return stats;
 }
 
-/** npm 与 raw 分池并发刷新过期分组；返回合并后的分类统计。 */
-async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<RefreshStats> {
+/** npm 与 raw 分池并发刷新过期分组；返回各池统计与合并结果。 */
+async function refreshPending(
+  pending: PendingGroup[],
+  cache: Cache,
+): Promise<{ npm: RefreshStats; raw: RefreshStats; merged: RefreshStats }> {
   const npm: PendingGroup[] = [];
   const raw: PendingGroup[] = [];
   for (const group of pending) {
@@ -255,13 +278,14 @@ async function refreshPending(pending: PendingGroup[], cache: Cache): Promise<Re
     runPool(npm, NPM_CONCURRENCY, cache),
     runPool(raw, RAW_CONCURRENCY, cache),
   ]);
-  return {
+  const merged: RefreshStats = {
     queried: npmStats.queried + rawStats.queried,
     missing: npmStats.missing + rawStats.missing,
     throttled: npmStats.throttled + rawStats.throttled,
     unreachable: npmStats.unreachable + rawStats.unreachable,
     samples: [...npmStats.samples, ...rawStats.samples].slice(0, SAMPLE_LIMIT),
   };
+  return { npm: npmStats, raw: rawStats, merged };
 }
 
 /** 就地写入 entry.version，过期条目重新查询并回填缓存。 */
@@ -291,9 +315,18 @@ export async function resolveVersions(
     else pending.set(key, { key, spec: target, entries: [entry] });
   }
 
-  const stats = await refreshPending([...pending.values()], cache);
-  if (stats.queried > 0) saveCache(dir, cache);
+  const { npm, raw, merged } = await refreshPending([...pending.values()], cache);
+  if (merged.queried > 0) saveCache(dir, cache);
 
   const hits = entries.filter(entry => entry.version !== null && entry.version !== "").length;
-  return { hits, cached, ...stats };
+  return {
+    hits,
+    cached,
+    queried: merged.queried,
+    missing: merged.missing,
+    throttled: merged.throttled,
+    unreachable: merged.unreachable,
+    samples: merged.samples,
+    byHost: { npm: hostStats(npm), raw: hostStats(raw) },
+  };
 }

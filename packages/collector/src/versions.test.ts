@@ -74,7 +74,19 @@ test("resolveVersions：首次查询回填版本并写入缓存", async () => {
     const item = entry();
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "1.2.3");
-    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, missing: 0, throttled: 0, unreachable: 0, samples: [] });
+    assert.deepEqual(result, {
+      hits: 1,
+      cached: 0,
+      queried: 1,
+      missing: 0,
+      throttled: 0,
+      unreachable: 0,
+      samples: [],
+      byHost: {
+        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+      },
+    });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string; t: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "1.2.3");
   } finally {
@@ -92,7 +104,19 @@ test("resolveVersions：TTL 内直接命中缓存，不再发请求", async () =
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "2.0.0");
     assert.equal(fetchStub.calls.length, 0);
-    assert.deepEqual(result, { hits: 1, cached: 1, queried: 0, missing: 0, throttled: 0, unreachable: 0, samples: [] });
+    assert.deepEqual(result, {
+      hits: 1,
+      cached: 1,
+      queried: 0,
+      missing: 0,
+      throttled: 0,
+      unreachable: 0,
+      samples: [],
+      byHost: {
+        npm: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+      },
+    });
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
@@ -150,7 +174,19 @@ test("resolveVersions：首次请求失败后重试成功", async () => {
     const result = await resolveVersions([item], dir);
     assert.equal(item.version, "0.5.1");
     assert.equal(fetchStub.calls.length, 2);
-    assert.deepEqual(result, { hits: 1, cached: 0, queried: 1, missing: 0, throttled: 0, unreachable: 0, samples: [] });
+    assert.deepEqual(result, {
+      hits: 1,
+      cached: 0,
+      queried: 1,
+      missing: 0,
+      throttled: 0,
+      unreachable: 0,
+      samples: [],
+      byHost: {
+        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+      },
+    });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
     assert.equal(cache["npm:some-plugin"]?.v, "0.5.1");
   } finally {
@@ -183,6 +219,51 @@ test("resolveVersions：请求带 User-Agent，避免 npm 端点限流", async (
     await resolveVersions([entry()], dir);
     const headers = fetchStub.inits[0]?.headers as Record<string, string> | undefined;
     assert.match(String(headers?.["user-agent"]), /dsh-crate-collector/);
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：非法包名不发 npm 请求，回退读仓库 package.json", async () => {
+  const dir = tempDir();
+  const fetchStub = stubFetch(url => {
+    assert.match(url, /^https:\/\/raw\.githubusercontent\.com\/o\/one\/HEAD\/package\.json$/);
+    return json({ version: "1.1.0" });
+  });
+  try {
+    const item = entry({
+      install: { ...entry().install, packageName: "只装不构建）" },
+    });
+    const result = await resolveVersions([item], dir);
+    assert.equal(item.version, "1.1.0");
+    assert.equal(fetchStub.calls.length, 1);
+    assert.equal(result.byHost.raw.queried, 1);
+    assert.equal(result.byHost.npm.queried, 0);
+  } finally {
+    fetchStub.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveVersions：按域名拆分统计", async () => {
+  const dir = tempDir();
+  const fetchStub = stubFetch(url =>
+    url.includes("registry.npmjs.org") ? json({ version: "1.2.3" }) : json({ error: "no" }, 404),
+  );
+  try {
+    const npmEntry = entry();
+    const ghEntry = entry({
+      id: "o/two",
+      name: "two",
+      fullName: "o/two",
+      install: { ...entry().install, packageName: "github:o/two" },
+    });
+    const result = await resolveVersions([npmEntry, ghEntry], dir);
+    assert.deepEqual(result.byHost.npm, { queried: 1, missing: 0, throttled: 0, unreachable: 0 });
+    assert.deepEqual(result.byHost.raw, { queried: 1, missing: 1, throttled: 0, unreachable: 0 });
+    assert.equal(result.queried, 2);
+    assert.equal(result.missing, 1);
   } finally {
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });

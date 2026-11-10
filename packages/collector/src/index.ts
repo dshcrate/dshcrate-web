@@ -14,7 +14,7 @@ import {
   writeMarketTop,
   writeMeta,
 } from "./emit.ts";
-import { normalizeRecord, type RawRecord } from "./normalize.ts";
+import { isUsableInstallSpec, normalizeRecord, type RawRecord } from "./normalize.ts";
 import { fetchMirrorRecords } from "./sources/mirror.ts";
 import { fetchGithubRecords, fetchReposByNames } from "./sources/github.ts";
 import { fetchCatalogIndex, mergeCatalog } from "./sources/catalog.ts";
@@ -359,8 +359,16 @@ async function main(): Promise<void> {
   let fixedMethod = 0;
   for (const e of active) {
     const install = e.install;
-    const cmd = install.command;
     if (install.method !== "pnpm-profile") continue;
+    // 历史脏数据：包名不是可安装规格（中文说明、<目录>、owner/repo 等），整条作废。
+    if (install.packageName !== null && !isUsableInstallSpec(install.packageName)) {
+      install.command = null;
+      install.packageName = null;
+      install.method = "unknown";
+      clearedCmd++;
+      continue;
+    }
+    const cmd = install.command;
     if (!cmd) {
       install.method = "unknown";
       fixedMethod++;
@@ -373,9 +381,9 @@ async function main(): Promise<void> {
     if (at >= 0) {
       let j = at + 1;
       while (j < tokens.length && tokens[j]?.startsWith("-")) j++;
-      const token = tokens[j];
-      const pkg = install.packageName;
-      spec = pkg && !pkg.startsWith("-") ? pkg : token && !token.startsWith("-") ? token : null;
+      // token 也可能是同一批脏数据，必须通过规格校验才采用。
+      const candidates: Array<string | null> = [install.packageName, tokens[j] ?? null];
+      spec = candidates.find((c): c is string => c !== null && isUsableInstallSpec(c)) ?? null;
     }
     if (!spec) {
       install.command = null;
@@ -452,6 +460,15 @@ async function main(): Promise<void> {
   log(
     args.silent,
     `[collector] 版本号命中 ${versionHits.hits} 条（缓存 ${versionHits.cached} / 实查 ${versionHits.queried} 个包 / 无版本 ${versionHits.missing} / 限流 ${versionHits.throttled} / 网络 ${versionHits.unreachable}）`,
+  );
+  const { npm: npmHost, raw: rawHost } = versionHits.byHost;
+  log(
+    args.silent,
+    `[collector] 版本查询分布 npm：实查 ${npmHost.queried} / 无版本 ${npmHost.missing} / 限流 ${npmHost.throttled} / 网络 ${npmHost.unreachable}`,
+  );
+  log(
+    args.silent,
+    `[collector] 版本查询分布 raw：实查 ${rawHost.queried} / 无版本 ${rawHost.missing} / 限流 ${rawHost.throttled} / 网络 ${rawHost.unreachable}`,
   );
   if (versionHits.samples.length > 0) {
     log(args.silent, `[collector] 版本查询失败样例：${versionHits.samples.join("、")}`);

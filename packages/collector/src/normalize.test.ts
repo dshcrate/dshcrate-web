@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isThemeRepo, normalizeRecord } from "./normalize.ts";
+import { isThemeRepo, isUsableInstallSpec, normalizeRecord } from "./normalize.ts";
 
 /** 构造一条最小上游记录：只填类型判定用到的字段。 */
 function raw(patch: Record<string, unknown> = {}): Record<string, unknown> {
@@ -71,4 +71,51 @@ test("normalizeRecord：上游未知类型不会因主题线索变成 theme", ()
     new Date("2026-11-03T00:00:00Z"),
   );
   assert.equal(entry?.type, "unknown");
+});
+
+test("isUsableInstallSpec：合法 npm 名与远程规格通过", () => {
+  const ok = [
+    "dsh-context",
+    "@scope/pkg",
+    "pkg@1.2.3",
+    "pkg@^1.2.3",
+    "pkg@~1.2",
+    "pkg@latest",
+    "github:o/r",
+    "git+https://github.com/o/r.git",
+  ];
+  for (const spec of ok) assert.equal(isUsableInstallSpec(spec), true, spec);
+});
+
+test("isUsableInstallSpec：中文说明与裸斜杠被拒", () => {
+  const bad = ["<本地路径", "<该", "<目录", "只装不构建）", "jaccen/Awesome-Gaussian-Skills", "foo bar", "npm:(可选)"];
+  for (const spec of bad) assert.equal(isUsableInstallSpec(spec), false, spec);
+});
+
+test("normalizeRecord：上一轮包名是脏数据时不继承", () => {
+  const now = new Date("2026-11-03T00:00:00Z");
+  const prev = normalizeRecord(raw(), now)!;
+  prev.install = {
+    ...prev.install,
+    method: "pnpm-profile",
+    command: "dsh plugin --profile web add <本地路径",
+    packageName: "<本地路径",
+  };
+  const entry = normalizeRecord(raw(), now, prev);
+  assert.equal(entry?.install.packageName, null);
+  assert.equal(entry?.install.command, null);
+});
+
+test("normalizeRecord：上一轮包名合法时继续沿用", () => {
+  const now = new Date("2026-11-03T00:00:00Z");
+  const prev = normalizeRecord(raw(), now)!;
+  prev.install = {
+    ...prev.install,
+    method: "pnpm-profile",
+    command: "dsh plugin --profile web add dsh-foo",
+    packageName: "dsh-foo",
+  };
+  const entry = normalizeRecord(raw(), now, prev);
+  assert.equal(entry?.install.packageName, "dsh-foo");
+  assert.equal(entry?.install.command, "dsh plugin --profile web add dsh-foo");
 });
