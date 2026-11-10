@@ -323,17 +323,6 @@ async function main(): Promise<void> {
     }
   }
   if (placeholders > 0) log(args.silent, `[collector] 把 ${placeholders} 条命令的 profile 占位符换成 web`);
-  // README 模板里的占位规格（github:owner/repo）不是真地址，清掉别让用户去装
-  let placeholderCmd = 0;
-  for (const e of active) {
-    const spec = e.install.command?.match(/\badd\s+(\S+)/)?.[1] ?? "";
-    if (spec && isPlaceholderSpec(spec)) {
-      e.install.command = null;
-      e.install.packageName = null;
-      placeholderCmd++;
-    }
-  }
-  if (placeholderCmd > 0) log(args.silent, `[collector] 清除 ${placeholderCmd} 条占位安装命令`);
 
   if (dropIds.size > 0) {
     entries = active;
@@ -349,6 +338,19 @@ async function main(): Promise<void> {
     args.silent,
     `[collector] 安装命令补全：探测 ${probe.probed} 条 / 缓存命中 ${probe.cached} 条 / 补出 DSH 命令 ${probe.dsh} 条 / 上游安装器 ${probe.native} 条`,
   );
+
+  // README 模板里的占位规格（github:<owner>/<repo> 等）不是真实地址。
+  // 放在补全之后清：探测本身也可能从 README 再补回占位命令。
+  let placeholderCmd = 0;
+  for (const e of active) {
+    const pkg = e.install.packageName;
+    if (!pkg || !isPlaceholderSpec(pkg)) continue;
+    e.install.command = null;
+    e.install.packageName = null;
+    if (e.install.method === "pnpm-profile") e.install.method = "unknown";
+    placeholderCmd++;
+  }
+  if (placeholderCmd > 0) log(args.silent, `[collector] 清除 ${placeholderCmd} 条占位安装命令`);
 
   // 早期写入的历史命令没有 --profile（该参数在 dsh 里必填），站点上的 profile 选择
   // 替换不到目标，等于形同虚设。命令里还能取出规格的补回默认 web；只剩 flag 的

@@ -96,6 +96,8 @@ type Cache = Record<string, CacheRow>;
 
 function parseSpec(spec: string | null): Spec {
   if (!spec) return null;
+  // 占位模板（github:<owner>/<repo>）不是真实地址，查不了版本；回退读仓库本身。
+  if (/<[^>]+>/.test(spec)) return null;
 
   const gh = spec.match(/^github:([^/#]+)\/([^/#]+)/);
   if (gh) return { kind: "github", owner: gh[1]!, repo: gh[2]!.replace(/\.git$/, "") };

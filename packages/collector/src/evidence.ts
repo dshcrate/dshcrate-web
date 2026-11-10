@@ -86,9 +86,9 @@ export function packageNameOfSpec(spec: string): string {
   return at > 0 ? spec.slice(0, at) : spec;
 }
 
-/** README 模板里的占位规格（github:owner/repo 之类），不是真实安装地址。 */
+/** README 模板里的占位规格（github:owner/repo、github:<owner>/<repo> 之类），不是真实安装地址。 */
 export const isPlaceholderSpec = (spec: string): boolean =>
-  /^github:(owner|user|username|your[-_]?name|xxx)\//i.test(spec);
+  /^github:(owner|user|username|your[-_]?name|xxx)\//i.test(spec) || /<[^>]+>/.test(spec);
 
 /** 名字或简介里已经带 dsh 生态字样的，无需实证。 */
 export function nameSaysDsh(fullName: string, description: string | null): boolean {
