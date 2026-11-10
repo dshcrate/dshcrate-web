@@ -105,9 +105,75 @@ a { color: inherit; text-decoration: none; }
 .github-icon { display: none; }
 
 /* ---------- hero ---------- */
-.hero { padding: 40px 0 24px; max-width: 720px; }
-.hero h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.025em; line-height: 1.25; }
-.hero p { margin: 0 0 20px; color: var(--text-dim); font-size: 14.5px; }
+/* 桌面两栏：左侧标题、副标题、搜索，右侧安装命令；窄屏改成 标题 → 命令 → 副标题 → 搜索 */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-areas:
+    "title install"
+    "sub install"
+    "search install";
+  column-gap: 28px;
+  align-items: start;
+  padding: 40px 0 24px;
+}
+/* 工具页签没有安装命令：收起右栏，恢复单列窄版 */
+.hero--no-install {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "title" "sub" "search";
+  max-width: 720px;
+}
+.hero > h1 { grid-area: title; margin: 0 0 8px; font-size: 28px; letter-spacing: -0.025em; line-height: 1.25; }
+.hero > p { grid-area: sub; margin: 0 0 20px; color: var(--text-dim); font-size: 14.5px; }
+.hero > .search-row { grid-area: search; }
+/* 卡片纵向撑满左栏三行：顶部与标题齐平，底部与搜索/页签齐平 */
+.hero > .hero-install {
+  grid-area: install; margin: 0;
+  align-self: stretch;
+  display: flex; flex-direction: column;
+}
+
+/* 首页安装引导：标题与复制按钮一行，命令整行；长命令横向滚动，不撑破布局 */
+.hero-install {
+  padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2);
+}
+.hero-install-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px;
+}
+.hero-install-title { color: var(--text-dim); font-size: 13px; font-weight: 500; }
+.hero-install-copy {
+  flex: none; padding: 5px 11px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface); color: var(--text-dim);
+  font-family: inherit; font-size: 12px; cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.hero-install-copy:hover { color: var(--text); border-color: var(--text-faint); }
+.hero-install-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hero-install-code {
+  display: block; box-sizing: border-box; width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.5;
+  white-space: nowrap; overflow-x: auto;
+}
+/* 说明文字轻微右移 4px；贴到卡片底部 */
+.hero-install-note { display: block; margin: auto 0 0 4px; padding-top: 8px; color: var(--text-faint); font-size: 12px; }
+
+/* 平板及以下：右栏收回到标题下面，顺序 标题 → 安装命令 → 副标题 → 搜索 */
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "install" "sub" "search";
+  }
+  .hero--no-install { grid-template-areas: "title" "sub" "search"; }
+  .hero > .hero-install { margin: 4px 0 18px; }
+}
 
 .search-box { position: relative; }
 .search-box input {
@@ -953,6 +1019,9 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 640px) {
   .hero { padding: 28px 0 18px; }
   .hero h1 { font-size: 22px; }
+  /* 安装命令保持单行，靠横向滚动看完整命令，避免换行后像两段不同指令 */
+  .hero-install { padding: 10px 12px; }
+  .hero-install-code { font-size: 12px; }
   /* 手机宽度放不下一行搜索框 + 分段控件，改为上下排；两个选项各占一半 */
   .search-row { flex-direction: column; }
   .scope-btn { flex: 1; height: 38px; }

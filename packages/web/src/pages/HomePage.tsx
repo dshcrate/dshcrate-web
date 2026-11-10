@@ -5,6 +5,7 @@ import { PluginCard } from "../components/PluginCard";
 import { CardSkeleton } from "../components/CardSkeleton";
 import { HeaderSettings } from "../components/HeaderSettings";
 import { CurationDialog } from "../components/CurationDialog";
+import { copyText } from "../lib/clipboard";
 import {
   bootstrapCategories,
   bootstrapMeta,
@@ -35,6 +36,9 @@ import { ORIGIN, SEO_DEFAULT_DESCRIPTION, SEO_SITE_NAME, useSeo } from "../lib/s
  */
 
 const PAGE_STEP = 60;
+
+/** 首页引导命令：把插件市场装进 DSH。不写版本号，避免站点显示过期版本。 */
+const MARKET_INSTALL_COMMAND = "dsh plugin --profile web add dsh-crate";
 
 /**
  * 分类 chip 的占位宽度。
@@ -124,6 +128,9 @@ export default function HomePage() {
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [shown, setShown] = useState(PAGE_STEP);
   const [error, setError] = useState<string | null>(null);
+  /** 首页安装命令的复制反馈 */
+  const [copiedInstall, setCopiedInstall] = useState(false);
+  const installTimer = useRef<number | null>(null);
 
   const [fullLite, setFullLite] = useState<LiteEntry[] | null>(null);
   /** 全量切片的下载进度：字节数来自流式读取，用于长下载时给用户可见反馈 */
@@ -161,6 +168,11 @@ export default function HomePage() {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
+  }, []);
+
+  // 卸载时清掉复制反馈的定时器，避免在已卸载组件上 setState
+  useEffect(() => () => {
+    if (installTimer.current) window.clearTimeout(installTimer.current);
   }, []);
 
   // 首屏就绪后空闲预取全量切片：用户点搜索或任一筛选时它已在内存里，
@@ -397,6 +409,14 @@ export default function HomePage() {
 
   const isTools = scope === "tools";
 
+  /** 复制首页引导命令；成功后在按钮上停留 1.6s 的「已复制」反馈。 */
+  const copyInstall = useCallback(async () => {
+    if (!(await copyText(MARKET_INSTALL_COMMAND))) return;
+    setCopiedInstall(true);
+    if (installTimer.current) window.clearTimeout(installTimer.current);
+    installTimer.current = window.setTimeout(() => setCopiedInstall(false), 1600);
+  }, []);
+
   if (error) {
     return (
       <main className="wrap">
@@ -412,9 +432,26 @@ export default function HomePage() {
 
   return (
     <main className="wrap">
-      <section className="hero">
+      <section className={`hero${isTools ? " hero--no-install" : ""}`}>
         <h1>{t(isTools ? "home.title.tools" : "home.title.plugins")}</h1>
         <p>{t(isTools ? "home.sub.tools" : "home.sub.plugins")}</p>
+        {!isTools && (
+          <div className="hero-install">
+            <div className="hero-install-head">
+              <span className="hero-install-title">{t("home.install.title")}</span>
+              <button
+                type="button"
+                className="hero-install-copy"
+                onClick={copyInstall}
+                aria-label={t("home.install.aria")}
+              >
+                {copiedInstall ? t("common.copied") : t("common.copy")}
+              </button>
+            </div>
+            <code className="hero-install-code">{MARKET_INSTALL_COMMAND}</code>
+            <span className="hero-install-note">{t("home.install.note")}</span>
+          </div>
+        )}
         <div className="search-row">
           <form className={`search-box${input ? " has-value" : ""}`} onSubmit={submitSearch} role="search">
             <span className="icon">⌕</span>
