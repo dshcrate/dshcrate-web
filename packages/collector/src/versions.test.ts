@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { PluginEntry } from "@dsh-crate/schema";
-import { resolveVersions } from "./versions.ts";
+import { createThrottleBreaker, resolveVersions } from "./versions.ts";
 
 /** 构造一条最小条目：只填版本解析用到的字段。 */
 function entry(patch: Partial<PluginEntry> = {}): PluginEntry {
@@ -83,8 +83,8 @@ test("resolveVersions：首次查询回填版本并写入缓存", async () => {
       unreachable: 0,
       samples: [],
       byHost: {
-        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0 },
-        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
       },
     });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string; t: string }>;
@@ -113,8 +113,8 @@ test("resolveVersions：TTL 内直接命中缓存，不再发请求", async () =
       unreachable: 0,
       samples: [],
       byHost: {
-        npm: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
-        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+        npm: { queried: 0, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
       },
     });
   } finally {
@@ -183,8 +183,8 @@ test("resolveVersions：首次请求失败后重试成功", async () => {
       unreachable: 0,
       samples: [],
       byHost: {
-        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0 },
-        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0 },
+        npm: { queried: 1, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
+        raw: { queried: 0, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 },
       },
     });
     const cache = JSON.parse(readFileSync(join(dir, "versions-cache.json"), "utf8")) as Record<string, { v: string }>;
@@ -260,8 +260,8 @@ test("resolveVersions：按域名拆分统计", async () => {
       install: { ...entry().install, packageName: "github:o/two" },
     });
     const result = await resolveVersions([npmEntry, ghEntry], dir);
-    assert.deepEqual(result.byHost.npm, { queried: 1, missing: 0, throttled: 0, unreachable: 0 });
-    assert.deepEqual(result.byHost.raw, { queried: 1, missing: 1, throttled: 0, unreachable: 0 });
+    assert.deepEqual(result.byHost.npm, { queried: 1, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 });
+    assert.deepEqual(result.byHost.raw, { queried: 1, missing: 1, throttled: 0, unreachable: 0, pauses: 0, skipped: 0 });
     assert.equal(result.queried, 2);
     assert.equal(result.missing, 1);
   } finally {
@@ -323,4 +323,47 @@ test("resolveVersions：github 规格读仓库 package.json 并写缓存", async
     fetchStub.restore();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("createThrottleBreaker：未达阈值不冷却，达到阈值冷却一次", async () => {
+  const waits: number[] = [];
+  const breaker = createThrottleBreaker(3, 1000, 3, async (ms) => { waits.push(ms); });
+  assert.equal(await breaker.note("throttled"), false);
+  assert.equal(await breaker.note("throttled"), false);
+  assert.deepEqual(waits, []);
+  assert.equal(await breaker.note("throttled"), true);
+  assert.deepEqual(waits, [1000]);
+  assert.equal(breaker.open, false);
+});
+
+test("createThrottleBreaker：成功会重置连续计数", async () => {
+  const waits: number[] = [];
+  const breaker = createThrottleBreaker(3, 1000, 3, async (ms) => { waits.push(ms); });
+  await breaker.note("throttled");
+  await breaker.note("throttled");
+  await breaker.note(null);
+  await breaker.note("throttled");
+  await breaker.note("throttled");
+  assert.deepEqual(waits, []);
+});
+
+test("createThrottleBreaker：连续多轮冷却无成功后打开熔断", async () => {
+  const breaker = createThrottleBreaker(1, 10, 2, async () => {});
+  assert.equal(await breaker.note("throttled"), true);
+  assert.equal(await breaker.note("throttled"), true);
+  assert.equal(await breaker.note("throttled"), false);
+  assert.equal(breaker.open, true);
+});
+
+test("createThrottleBreaker：冷却期间 gate 会等待", async () => {
+  let release: (() => void) | null = null;
+  const breaker = createThrottleBreaker(1, 10, 3, () => new Promise<void>((resolve) => { release = resolve; }));
+  const trip = breaker.note("throttled");
+  let gated = false;
+  const gatedCall = breaker.gate().then(() => { gated = true; });
+  await Promise.resolve();
+  assert.equal(gated, false);
+  release!();
+  await Promise.all([trip, gatedCall]);
+  assert.equal(gated, true);
 });

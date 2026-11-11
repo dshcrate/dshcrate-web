@@ -468,11 +468,11 @@ async function main(): Promise<void> {
   const { npm: npmHost, raw: rawHost } = versionHits.byHost;
   log(
     args.silent,
-    `[collector] 版本查询分布 npm：实查 ${npmHost.queried} / 无版本 ${npmHost.missing} / 限流 ${npmHost.throttled} / 网络 ${npmHost.unreachable}`,
+    `[collector] 版本查询分布 npm：实查 ${npmHost.queried} / 无版本 ${npmHost.missing} / 限流 ${npmHost.throttled} / 网络 ${npmHost.unreachable} / 熔断 ${npmHost.pauses} 次 / 跳过 ${npmHost.skipped}`,
   );
   log(
     args.silent,
-    `[collector] 版本查询分布 raw：实查 ${rawHost.queried} / 无版本 ${rawHost.missing} / 限流 ${rawHost.throttled} / 网络 ${rawHost.unreachable}`,
+    `[collector] 版本查询分布 raw：实查 ${rawHost.queried} / 无版本 ${rawHost.missing} / 限流 ${rawHost.throttled} / 网络 ${rawHost.unreachable} / 熔断 ${rawHost.pauses} 次 / 跳过 ${rawHost.skipped}`,
   );
   if (versionHits.samples.length > 0) {
     log(args.silent, `[collector] 版本查询失败样例：${versionHits.samples.join("、")}`);

@@ -22,16 +22,22 @@ import { DATA_DIR } from "./config.ts";
 const REGISTRY = "https://registry.npmjs.org";
 const RAW = "https://raw.githubusercontent.com";
 /**
- * 并发按域名拆开：npm registry 限流更严，压到 8；raw.githubusercontent 宽松些，保持 24。
+ * 并发按域名拆开：npm registry 限流更严，压到 4；raw.githubusercontent 宽松些，保持 24。
  * 两池并行跑，互不拖慢。
  */
-const NPM_CONCURRENCY = 8;
+const NPM_CONCURRENCY = 4;
 const RAW_CONCURRENCY = 24;
 const TIMEOUT_MS = 8000;
 /** 普通失败重试前的等待时间。 */
 const RETRY_DELAY_MS = 500;
 /** 被限流（429）时多等一会儿再试。 */
 const THROTTLE_DELAY_MS = 2000;
+/** 连续多少次 429 触发一次冷却。 */
+const BREAKER_THRESHOLD = 8;
+/** 单次冷却时长。 */
+const BREAKER_PAUSE_MS = 30_000;
+/** 连续多少轮冷却仍没有成功，就打开熔断，本轮剩余包直接跳过。 */
+const BREAKER_MAX_TRIPS = 3;
 /** 构建日志里最多展示的失败样例数。 */
 const SAMPLE_LIMIT = 5;
 /** 沿用 downloads.ts 的 UA：npm 端点对无 UA 请求会成片 429。 */
@@ -63,6 +69,10 @@ export interface HostStats {
   missing: number;
   throttled: number;
   unreachable: number;
+  /** 触发冷却的次数。 */
+  pauses: number;
+  /** 熔断打开后本轮跳过的分组数。 */
+  skipped: number;
 }
 
 /** 版本号刷新统计。 */
@@ -223,7 +233,7 @@ interface RefreshStats extends HostStats {
 }
 
 function emptyStats(): RefreshStats {
-  return { queried: 0, missing: 0, throttled: 0, unreachable: 0, samples: [] };
+  return { queried: 0, missing: 0, throttled: 0, unreachable: 0, pauses: 0, skipped: 0, samples: [] };
 }
 
 /** 去掉样例，只留计数，供 byHost 使用。 */
@@ -233,15 +243,78 @@ function hostStats(stats: RefreshStats): HostStats {
     missing: stats.missing,
     throttled: stats.throttled,
     unreachable: stats.unreachable,
+    pauses: stats.pauses,
+    skipped: stats.skipped,
   };
 }
 
-/** 单池并发消费：固定并发数，直到队列取空。 */
+/** 限流熔断器。 */
+export interface ThrottleBreaker {
+  /** 已打开：本池剩余任务不再发请求。 */
+  readonly open: boolean;
+  /** 冷却中会等待；熔断打开后立即返回。 */
+  gate(): Promise<void>;
+  /** 记录结果；返回 true 表示本次触发了冷却。 */
+  note(failure: FailureKind | null): Promise<boolean>;
+}
+
+/**
+ * 创建限流熔断器。
+ *
+ * 连续 threshold 次 429 后冷却 pauseMs；连续 maxTrips 轮冷却仍没有一次成功，
+ * 就打开熔断，让本轮剩余包直接跳过（保留旧版本），避免整池长时间空转。
+ * wait 可注入，便于单测。
+ */
+export function createThrottleBreaker(
+  threshold: number,
+  pauseMs: number,
+  maxTrips: number = BREAKER_MAX_TRIPS,
+  wait: (ms: number) => Promise<void> = sleep,
+): ThrottleBreaker {
+  let consecutive = 0;
+  let trips = 0;
+  let paused: Promise<void> | null = null;
+  let open = false;
+  return {
+    get open(): boolean {
+      return open;
+    },
+    async gate(): Promise<void> {
+      if (paused !== null) await paused;
+    },
+    async note(failure: FailureKind | null): Promise<boolean> {
+      // 只有成功会清空「连续冷却无成功」的计数；404/网络失败不重置
+      if (failure === null) {
+        consecutive = 0;
+        trips = 0;
+        return false;
+      }
+      if (failure !== "throttled") return false;
+      consecutive += 1;
+      if (consecutive < threshold) return false;
+      consecutive = 0;
+      trips += 1;
+      if (trips > maxTrips) {
+        open = true;
+        return false;
+      }
+      paused = wait(pauseMs).finally(() => { paused = null; });
+      await paused;
+      return true;
+    },
+  };
+}
+
+/** 单池并发消费：固定并发数，直到队列取空或熔断打开。 */
 async function runPool(groups: PendingGroup[], concurrency: number, cache: Cache): Promise<RefreshStats> {
   const stats = emptyStats();
+  const breaker = createThrottleBreaker(BREAKER_THRESHOLD, BREAKER_PAUSE_MS);
   let cursor = 0;
   const workers = Array.from({ length: Math.min(concurrency, groups.length) }, async () => {
     while (cursor < groups.length) {
+      if (breaker.open) break;
+      await breaker.gate();
+      if (breaker.open) break;
       const group = groups[cursor]!;
       cursor += 1;
       stats.queried += 1;
@@ -252,16 +325,19 @@ async function runPool(groups: PendingGroup[], concurrency: number, cache: Cache
       if (version === null) {
         const kind: FailureKind = failure ?? "missing";
         stats[kind] += 1;
+        if (await breaker.note(kind)) stats.pauses += 1;
         if (kind !== "missing" && stats.samples.length < SAMPLE_LIMIT) {
           stats.samples.push(`${group.key}#${kind}`);
         }
         continue;
       }
+      await breaker.note(null);
       for (const entry of group.entries) entry.version = version;
       cache[group.key] = { v: version, t: today() };
     }
   });
   await Promise.all(workers);
+  if (breaker.open) stats.skipped = groups.length - cursor;
   return stats;
 }
 
@@ -285,6 +361,8 @@ async function refreshPending(
     missing: npmStats.missing + rawStats.missing,
     throttled: npmStats.throttled + rawStats.throttled,
     unreachable: npmStats.unreachable + rawStats.unreachable,
+    pauses: npmStats.pauses + rawStats.pauses,
+    skipped: npmStats.skipped + rawStats.skipped,
     samples: [...npmStats.samples, ...rawStats.samples].slice(0, SAMPLE_LIMIT),
   };
   return { npm: npmStats, raw: rawStats, merged };
