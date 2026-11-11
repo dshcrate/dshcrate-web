@@ -629,6 +629,12 @@ export function SiteHeader({ meta }: { meta: CatalogMeta | null }) {
     <header className="site-header">
       <div className="wrap">
         <Link className="brand" to="/">
+          <svg className="brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+            <rect x="16" y="16" width="44" height="44" rx="7" />
+            <rect x="16" y="68" width="44" height="44" rx="7" />
+            <rect x="68" y="68" width="44" height="44" rx="7" />
+            <rect x="68" y="16" width="44" height="44" rx="7" />
+          </svg>
           {siteConfig.siteName}
           <span className="zh">{siteConfig.siteNameZh}</span>
         </Link>
