@@ -37,7 +37,7 @@ import { ORIGIN, SEO_DEFAULT_DESCRIPTION, SEO_SITE_NAME, useSeo } from "../lib/s
 
 const PAGE_STEP = 60;
 
-/** 首页引导命令：把插件市场装进 DSH。不写版本号，避免站点显示过期版本。 */
+/** 首页引导命令：把插件箱子装进 DSH。不写版本号，避免站点显示过期版本。 */
 const MARKET_INSTALL_COMMAND = "dsh plugin --profile web add dsh-crate";
 
 /**

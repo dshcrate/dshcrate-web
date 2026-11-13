@@ -77,6 +77,6 @@ export function useSeo(input: SeoInput): void {
 
 /** 首页 / 榜单等公共页的默认描述，详情页另用条目简介覆盖。 */
 export const SEO_DEFAULT_DESCRIPTION =
-  "DSH 插件集市：收录 DeepSeek Harness 插件与非 DSH 独立工具，按星标与更新活跃度排序，支持分类筛选与全文搜索，每日自动刷新。";
+  "DSH 插件箱子：收录 DeepSeek Harness 插件与非 DSH 独立工具，按星标与更新活跃度排序，支持分类筛选与全文搜索，每日自动刷新。";
 
 export const SEO_SITE_NAME = siteConfig.siteNameZh;

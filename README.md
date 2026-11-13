@@ -1,11 +1,11 @@
-# DSH 插件集市
+# DSH 插件箱子
 
 **[dshcrate.com](https://dshcrate.com)**
 
-DeepSeek Harness（DSH）插件与工具目录，收录 20000+ 个仓库，每日自动刷新。
+DeepSeek Harness（DSH）插件与工具目录，收录 4 万+ 个仓库，每日自动刷新。
 不用再去 GitHub 一条条翻 README —— 打开就能按星标、下载量和更新活跃度看清哪个值得装。
 
-![DSH 插件集市](https://dshcrate.com/og.png)
+![DSH 插件箱子](https://dshcrate.com/og.png)
 
 ## 能帮你做什么
 
