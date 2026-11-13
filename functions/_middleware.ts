@@ -15,6 +15,21 @@
 /** 站内真实路由：只有这些无扩展名路径才交给单页应用处理。 */
 const APP_ROUTES = [/^\/$/, /^\/top\/?$/, /^\/favorites\/?$/, /^\/submit\/?$/, /^\/p\/[^/]+\/[^/]+\/?$/];
 
+/** sitemap 路径：索引、静态页分片、详情页分片。 */
+const SITEMAP_PATH = /^\/sitemap(?:-pages|-\d+)?\.xml$/;
+
+/**
+ * 判断是否 sitemap 请求。
+ * 这些文件由构建期生成，缺失时必须是真 404；否则会被 SPA 兜底改写成 200 HTML，
+ * Google 会当成解析失败（无法抓取）。
+ *
+ * 入参：pathname 为请求路径（不含域名与查询串）
+ * 返回：命中 sitemap 路径返回 true
+ */
+export function isSitemapPath(pathname: string): boolean {
+  return SITEMAP_PATH.test(pathname);
+}
+
 /** 这些前缀一律放行：构建产物、数据切片、收录接口。 */
 const OPEN_PREFIXES = ["/assets/", "/data/", "/api/"];
 
@@ -35,6 +50,17 @@ export async function onRequest(context: Ctx): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") return next();
 
   const { pathname } = new URL(request.url);
+  // sitemap 必须先确认文件真实存在：缺失时返回 404，不能被 SPA 兜底成 200 HTML
+  if (isSitemapPath(pathname)) {
+    const asset = await env.ASSETS.fetch(new URL(pathname, request.url));
+    const contentType = asset.headers.get("content-type") ?? "";
+    // 静态资源存在且是 XML 才放行；命中 SPA 兜底（text/html）同样按缺失处理
+    if (asset.status === 200 && contentType.includes("xml")) return next();
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   // 带扩展名的（js/css/json/svg/png/txt/xml）与入口页本身一律放行
   if (pathname === "/index.html" || /\.[a-z0-9]+$/i.test(pathname)) return next();
   if (OPEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return next();
