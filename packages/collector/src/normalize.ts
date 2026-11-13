@@ -195,6 +195,7 @@ export function normalizeRecord(raw: RawRecord, now: Date, prev?: PluginEntry): 
     },
     sources: sources.length ? sources : ["mirror"],
     firstSeenAt: prev?.firstSeenAt ?? iso,
+    firstSeenSeq: prev?.firstSeenSeq,
     updatedAt: iso,
   };
 

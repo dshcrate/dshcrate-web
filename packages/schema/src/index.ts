@@ -70,6 +70,8 @@ export interface PluginEntry {
   sources: string[];
   /** 我方首次收录时间，merge 时保持不变。 */
   firstSeenAt: string;
+  /** 入库先后序号：首次收录时分配、之后不再变化；老数据在建库时回填。 */
+  firstSeenSeq?: number;
   /** 我方最近一次刷新时间。 */
   updatedAt: string;
   /** README 首段摘要：只给上游没写简介的条目补，用于前端分类兜底。 */

@@ -4,8 +4,9 @@
  * 规则（与用户约定）：
  * - sitemap.xml 只做索引，第一项是 sitemap-pages.xml（首页/榜单/提交页），
  *   之后按 sitemap-1.xml、sitemap-2.xml… 顺序排列；
- * - 详情页每 3000 条一片，按 firstSeenAt 升序、同时间按 id 升序；
- *   新收录的条目时间更新，自然落在最后一片的末尾，已有分片不会被打乱；
+ * - 详情页每 3000 条一片，按入库序号 firstSeenSeq 升序；缺序号的旧数据
+ *   回退到 firstSeenAt + id。新收录的序号更大，自然落在最后一片的末尾，
+ *   已有分片不会被打乱；
  * - 被删除的条目会让后面的分片整体前移，这是可接受的代价；
  * - /favorites 在 robots.txt 里已禁爬，不进 sitemap。
  */
@@ -26,6 +27,7 @@ export const STATIC_PAGES = ["/", "/top", "/submit"] as const;
 export interface SitemapEntry {
   id: string;
   firstSeenAt?: string | null;
+  firstSeenSeq?: number | null;
   updatedAt?: string | null;
 }
 
@@ -53,14 +55,19 @@ export function sitemapDate(value: string | null | undefined): string {
   return new Date(time).toISOString().slice(0, 10);
 }
 
-/** 去重并按 firstSeenAt、id 升序排序，保证分片顺序稳定、新条目落在末尾。 */
+/** 去重并按入库序号、firstSeenAt、id 升序排序，保证分片顺序稳定、新条目落在末尾。 */
 export function sortEntries(entries: readonly SitemapEntry[]): SitemapEntry[] {
   const seen = new Map<string, SitemapEntry>();
   for (const entry of entries) {
     if (typeof entry?.id !== "string" || entry.id.length === 0) continue;
     if (!seen.has(entry.id)) seen.set(entry.id, entry);
   }
+  const seq = (entry: SitemapEntry): number =>
+    typeof entry.firstSeenSeq === "number" ? entry.firstSeenSeq : Number.POSITIVE_INFINITY;
   return [...seen.values()].sort((left, right) => {
+    const leftSeq = seq(left);
+    const rightSeq = seq(right);
+    if (leftSeq !== rightSeq) return leftSeq < rightSeq ? -1 : 1;
     const leftTime = left.firstSeenAt ?? "";
     const rightTime = right.firstSeenAt ?? "";
     if (leftTime !== rightTime) return leftTime < rightTime ? -1 : 1;

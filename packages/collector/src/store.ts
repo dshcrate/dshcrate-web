@@ -45,23 +45,43 @@ export interface MergeResult {
   unchanged: number;
 }
 
+/**
+ * 保证每条都有入库序号：老数据缺序号时按 (firstSeenAt, id) 一次性回填，
+ * 返回下一个可用序号。序号写回条目本身，随 catalog 持久化，之后不再变化。
+ */
+export function ensureFirstSeenSeq(entries: PluginEntry[]): number {
+  const complete = entries.every(entry => typeof entry.firstSeenSeq === "number");
+  if (complete) {
+    return entries.reduce((max, entry) => Math.max(max, entry.firstSeenSeq ?? 0), 0) + 1;
+  }
+  const ordered = [...entries].sort((left, right) =>
+    (left.firstSeenAt ?? "").localeCompare(right.firstSeenAt ?? "") || left.id.localeCompare(right.id));
+  ordered.forEach((entry, index) => {
+    entry.firstSeenSeq = index + 1;
+  });
+  return ordered.length + 1;
+}
+
 /** 按 id 合并：新增 / 覆盖 / 沿用旧验证结论。 */
 export function mergeEntries(prev: Catalog, incoming: PluginEntry[]): MergeResult {
   const byId = new Map(prev.entries.map((e) => [e.id, e]));
+  let nextSeq = ensureFirstSeenSeq(prev.entries);
   let added = 0;
   let updated = 0;
   let unchanged = 0;
   for (const next of incoming) {
     const old = byId.get(next.id);
     if (!old) {
-      byId.set(next.id, next);
+      // 新条目拿到当前最大序号 + 1，sitemap 等按序号排序的产物自然把它放在末尾。
+      byId.set(next.id, { ...next, firstSeenSeq: nextSeq++ });
       added++;
       continue;
     }
-    // 沿用首次收录时间（重算分数不影响它），其余字段一律取最新抓取结果。
+    // 沿用首次收录时间与入库序号（重算分数不影响它们），其余字段一律取最新抓取结果。
     const merged: PluginEntry = {
       ...next,
       firstSeenAt: old.firstSeenAt,
+      firstSeenSeq: old.firstSeenSeq,
       // 来源是溯源信息，只增不减：手动补录（Issue 提交）的标记不能被后续检索结果冲掉
       sources: [...new Set([...old.sources, ...next.sources])],
     };

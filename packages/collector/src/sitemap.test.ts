@@ -65,6 +65,28 @@ test("新增条目排在最后一片末尾，已有分片不变", () => {
   assert.equal((lastChunk.match(/<url>/gu) ?? []).length, 2);
 });
 
+test("有入库序号时优先按序号排，时间只作回退", () => {
+  const sorted = sortEntries([
+    { id: "b/repo", firstSeenAt: "2026-01-01T00:00:00.000Z", firstSeenSeq: 2 },
+    { id: "a/repo", firstSeenAt: "2026-12-01T00:00:00.000Z", firstSeenSeq: 1 },
+  ]);
+  assert.deepEqual(sorted.map(entry => entry.id), ["a/repo", "b/repo"]);
+});
+
+test("新增条目序号更大，追加在最后一片末尾", () => {
+  const base = entries(CHUNK_SIZE + 1).map((entry, index) => ({ ...entry, firstSeenSeq: index + 1 }));
+  const before = buildSitemapFiles(base, "2026-11-12");
+  const added: SitemapEntry = {
+    id: "zzz/new",
+    firstSeenAt: "2027-01-01T00:00:00.000Z",
+    firstSeenSeq: base.length + 1,
+  };
+  const after = buildSitemapFiles([...base, added], "2026-11-13");
+  assert.equal(before[1]!.xml, after[1]!.xml);
+  const lastChunk = after.at(-1)!.xml;
+  assert.ok(lastChunk.indexOf("zzz/new") > lastChunk.indexOf("owner/repo-3000"));
+});
+
 test("详情页 URL 用 /p/<id> 且特殊字符被转义", () => {
   const files = buildSitemapFiles([{ id: "a&b/c", updatedAt: "2026-11-12T00:00:00.000Z" }], "2026-11-12");
   const chunk = files.at(-1)!.xml;
