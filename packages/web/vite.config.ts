@@ -10,8 +10,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** 站点名 / 域名集中一处配置：site.config.json 是唯一真相源，构建期注入前端。 */
 const site = JSON.parse(readFileSync(resolve(here, "../../site.config.json"), "utf8")) as Record<string, unknown>;
 
-const ORIGIN = `https://${String(site.domain)}`;
-
 /**
  * 构建版本号：取 git 提交总数拼成 v1.0.<n>，只在有新提交时增长。
  * 统计时排除 curation 目录 —— CI 每轮都会自动提交名单同步，把它算进来会让
@@ -35,9 +33,6 @@ function buildVersion(): string {
   }
 }
 
-/** sitemap 只收质量靠前的条目：两万条薄页面全塞进去会稀释整站权重。 */
-const SITEMAP_LIMIT = 3000;
-
 /**
  * 首屏筛选数据在构建期内联进 JS。
  *
@@ -60,12 +55,11 @@ function readCatalogBootstrap(): { meta: unknown; categories: unknown; categorie
   return meta && categories && categoriesTools ? { meta, categories, categoriesTools } : null;
 }
 
-function escapeXml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 /**
- * 构建收尾：生成 sitemap.xml 与 GitHub Pages 的 404 兜底页。
+ * 构建收尾：生成 GitHub Pages 的 404 兜底页。
+ *
+ * sitemap 由 `npm run build:sitemap` 在构建前生成到 public/，
+ * 这里不再重复生成，避免覆盖分片索引。
  *
  * 传到 Cloudflare Pages 时由 _redirects 接管深链，404.html 不会被用到；
  * 在切过去之前仍部署在 GitHub Pages，404.html 让详情页直达/刷新不会白屏。
@@ -76,30 +70,6 @@ function seoArtifacts(): Plugin {
     apply: "build",
     closeBundle() {
       const outDir = resolve(here, "dist");
-      const publicData = resolve(here, "public/data");
-      const lite = JSON.parse(readFileSync(resolve(publicData, "lite.json"), "utf8")) as Array<{ i: string; sc: number }>;
-      const meta = JSON.parse(readFileSync(resolve(publicData, "meta.json"), "utf8")) as { generatedAt?: string };
-      const lastmod = meta.generatedAt?.slice(0, 10);
-      const urls: string[] = [];
-
-      const head = (loc: string, priority: string, changefreq: string) => {
-        urls.push(
-          `  <url>\n    <loc>${escapeXml(loc)}</loc>${lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : ""}\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`,
-        );
-      };
-
-      head(`${ORIGIN}/`, "1.0", "daily");
-      head(`${ORIGIN}/top`, "0.8", "daily");
-
-      for (const entry of [...lite].sort((a, b) => b.sc - a.sc).slice(0, SITEMAP_LIMIT)) {
-        const path = entry.i.split("/").map((part) => encodeURIComponent(part)).join("/");
-        head(`${ORIGIN}/p/${path}`, "0.6", "weekly");
-      }
-
-      writeFileSync(
-        resolve(outDir, "sitemap.xml"),
-        `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
-      );
       copyFileSync(resolve(outDir, "index.html"), resolve(outDir, "404.html"));
     },
   };

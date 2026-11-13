@@ -97,6 +97,10 @@ jobs:
           RESCUE_REPOS: ${{ inputs.rescue || '' }}
         run: npm run collect -- --source auto --limit ${{ env.COLLECT_LIMIT }} --build
 
+      - name: 生成 sitemap
+        # 目录数据刚落盘，按 firstSeenAt 顺序每 3000 条分片，新条目自然追加到末尾。
+        run: npm run build:sitemap
+
       - name: 构建静态站
         run: npm run build
 

@@ -6,6 +6,10 @@ node_modules/
 .data/
 packages/web/public/data/
 
+# sitemap：构建期按目录数据生成（索引 + 每 3000 条一片）
+packages/web/public/sitemap.xml
+packages/web/public/sitemap-*.xml
+
 # build output
 packages/web/dist/
 dist/
