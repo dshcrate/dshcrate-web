@@ -28,6 +28,22 @@ DeepSeek Harness（DSH）插件与工具目录，收录 4 万+ 个仓库，每�
 2. 在卡片上点「安装」，复制命令
 3. 粘贴进终端执行
 
+## 把插件箱子装进 DSH
+
+网页只能浏览；想在 DSH 客户端里直接搜索、查看详情并一键安装，装 `dsh-crate` 插件：
+
+```sh
+# 从 npm 安装（推荐）
+dsh plugin --profile web add dsh-crate
+
+# 想跟仓库最新代码
+dsh plugin --profile web add github:dshcrate/dsh-crate
+```
+
+profile 不是 `web` 的话换个名字，例如 `--profile desktop`。装完重启 DSH，左侧菜单会出现「插件箱子」入口。
+
+不想装插件也可以：把 `https://dshcrate.com/data/index.json` 加进官方「插件 → 发现 → 索引源」，一样能在官方发现页浏览这份目录。
+
 ## 提交你的插件
 
 收录是自动的，另外有两条主动通道：
