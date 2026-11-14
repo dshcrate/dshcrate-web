@@ -296,13 +296,20 @@ async function main(): Promise<void> {
     urls: send,
   });
   const failed = [...result.failed, ...overflow];
+  const received = send.length - result.failed.length;
   console.log(
-    `[indexnow] 接收 ${send.length - result.failed.length} 条 / 批次状态 ${result.statuses.join(",")}${overflow.length > 0 ? ` / 超出日额度 ${overflow.length} 条` : ""}`,
+    `[indexnow] 接收 ${received} 条 / 批次状态 ${result.statuses.join(",")}${overflow.length > 0 ? ` / 顺延 ${overflow.length} 条` : ""}`,
   );
-  if (failed.length > 0) {
+  // 只有真正推送失败才算失败；额度不足导致的顺延属于正常情况
+  if (result.failed.length > 0) {
     writePending(PENDING_FILE, failed);
-    console.error(`[indexnow] 失败或顺延 ${failed.length} 条，已保留到下一轮`);
+    console.error(`[indexnow] 失败 ${result.failed.length} 条，已保留到下一轮`);
     process.exitCode = 1;
+    return;
+  }
+  if (overflow.length > 0) {
+    writePending(PENDING_FILE, overflow);
+    console.log(`[indexnow] 顺延 ${overflow.length} 条到下一轮`);
     return;
   }
   rmSync(PENDING_FILE, { force: true });
