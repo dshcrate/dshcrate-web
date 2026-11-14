@@ -114,9 +114,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: 推送 IndexNow
-        # 只推本轮新增/实质变更的详情页；失败不阻断部署，未成功的 URL 留到下一轮。
+      - name: 推送 Bing
+        # 带 apikey 走官方 URL Submission API；失败不阻断部署，未成功的 URL 留到下一轮。
         continue-on-error: true
+        env:
+          BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
         run: npm run indexnow:push
 
   # 失败告警：构建或部署挂了就在仓库里开 Issue。

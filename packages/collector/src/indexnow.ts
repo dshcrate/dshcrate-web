@@ -1,5 +1,9 @@
 /**
- * IndexNow 增量推送：把新增/实质变更的详情页 URL 主动通知给 Bing。
+ * Bing 主动推送：把新增/实质变更的详情页 URL 提交给 Bing Webmaster API。
+ *
+ * 为什么不用匿名 IndexNow 端点：CI（GitHub Actions）出口 IP 被 api.indexnow.org
+ * 以 403 拒绝，本地同代码同参数却正常；改用带 apikey 的官方 URL Submission API
+ * 绕开匿名出口风控。接口限制：单批 500 条、每域名每天 10,000 条（UTC 零点重置）。
  *
  * 设计边界：
  * - 只推增量：历史页已由 sitemap 全覆盖，全量重推属于协议不推荐的低质量提交；
@@ -12,17 +16,17 @@ import { pathToFileURL } from "node:url";
 import type { PluginEntry } from "@dsh-crate/schema";
 import { DATA_DIR, loadSiteConfig } from "./config.ts";
 
-/** IndexNow 接收端点，由它分发给所有参与引擎（Bing / Yandex / Seznam / Naver）。 */
-export const INDEXNOW_ENDPOINT = "https://api.indexnow.org/indexnow";
+/** Bing Webmaster URL Submission API，鉴权走 query 里的 apikey。 */
+export const BING_SUBMIT_ENDPOINT = "https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlbatch";
 
-/** 单次请求的 URL 上限，协议规定。 */
-export const INDEXNOW_BATCH_SIZE = 10_000;
+/** 单次请求上限，Bing API 规定。 */
+export const BING_BATCH_SIZE = 500;
+
+/** 每域名每天的提交上限，Bing API 规定（UTC 零点重置）。 */
+export const BING_DAILY_QUOTA = 10_000;
 
 /** 待推送文件：collect 写入，全部成功接收后删除。 */
 export const PENDING_FILE = resolve(DATA_DIR, "indexnow-pending.json");
-
-/** key 合法格式：8–128 位十六进制。 */
-const KEY_PATTERN = /^[a-f0-9]{8,128}$/i;
 
 /** 待推送文件的结构。 */
 export interface PendingFile {
@@ -128,7 +132,7 @@ export function writePending(file: string, urls: readonly string[], now = new Da
  * 入参：urls 全量 URL、size 每批上限
  * 返回：二维批次数组
  */
-export function chunkUrls(urls: readonly string[], size = INDEXNOW_BATCH_SIZE): string[][] {
+export function chunkUrls(urls: readonly string[], size = BING_BATCH_SIZE): string[][] {
   if (!Number.isInteger(size) || size < 1) throw new Error(`分批大小非法：${size}`);
   const batches: string[][] = [];
   for (let index = 0; index < urls.length; index += size) {
@@ -137,11 +141,23 @@ export function chunkUrls(urls: readonly string[], size = INDEXNOW_BATCH_SIZE): 
   return batches;
 }
 
+/**
+ * 按每日额度切分：超出部分留到下一轮，避免撞到 429。
+ * 入参：urls 待推送列表、quota 每日上限
+ * 返回：本轮发送与留待下一轮的 URL
+ */
+export function splitDailyQuota(
+  urls: readonly string[],
+  quota = BING_DAILY_QUOTA,
+): { send: string[]; overflow: string[] } {
+  if (!Number.isInteger(quota) || quota < 1) throw new Error(`每日额度非法：${quota}`);
+  return { send: [...urls.slice(0, quota)], overflow: [...urls.slice(quota)] };
+}
+
 /** 推送参数。fetchImpl / wait 可注入，便于单测。 */
 export interface PushOptions {
-  host: string;
-  key: string;
-  keyLocation: string;
+  apiKey: string;
+  siteUrl: string;
   urls: readonly string[];
   fetchImpl?: typeof fetch;
   wait?: (ms: number) => Promise<void>;
@@ -159,17 +175,13 @@ export interface PushResult {
 async function postBatch(options: PushOptions, urls: string[]): Promise<number> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const wait = options.wait ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
-  const body = JSON.stringify({
-    host: options.host,
-    key: options.key,
-    keyLocation: options.keyLocation,
-    urlList: urls,
-  });
+  const endpoint = `${BING_SUBMIT_ENDPOINT}?apikey=${encodeURIComponent(options.apiKey)}`;
+  const body = JSON.stringify({ siteUrl: options.siteUrl, urlList: urls });
   let status = 0;
   for (const delay of [0, 1000, 3000]) {
     if (delay > 0) await wait(delay);
     try {
-      const response = await fetchImpl(INDEXNOW_ENDPOINT, {
+      const response = await fetchImpl(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
         body,
@@ -186,6 +198,8 @@ async function postBatch(options: PushOptions, urls: string[]): Promise<number> 
 
 /** 分批推送全部 URL，返回每批状态与失败列表。 */
 export async function pushIndexNow(options: PushOptions): Promise<PushResult> {
+  if (!options.apiKey.trim()) throw new Error("缺少 Bing Webmaster API key");
+  if (!/^https:\/\//i.test(options.siteUrl)) throw new Error(`siteUrl 非法：${options.siteUrl}`);
   const statuses: number[] = [];
   const failed: string[] = [];
   for (const batch of chunkUrls(options.urls)) {
@@ -198,13 +212,6 @@ export async function pushIndexNow(options: PushOptions): Promise<PushResult> {
 
 /** CLI：读取待推送文件并提交；--dry-run 只打印条数。 */
 async function main(): Promise<void> {
-  const site = loadSiteConfig();
-  const key = site.indexNowKey.trim();
-  if (!KEY_PATTERN.test(key)) {
-    console.error(`[indexnow] indexNowKey 不合法（需 8–128 位十六进制）：${key || "空"}`);
-    process.exitCode = 1;
-    return;
-  }
   const urls = readPending(PENDING_FILE);
   if (urls.length === 0) {
     console.log("[indexnow] 无待推送 URL，跳过");
@@ -214,16 +221,26 @@ async function main(): Promise<void> {
     console.log(`[indexnow] dry-run：待推送 ${urls.length} 条`);
     return;
   }
+  const apiKey = (process.env.BING_WEBMASTER_API_KEY ?? "").trim();
+  if (!apiKey) {
+    console.error("[indexnow] 缺少 BING_WEBMASTER_API_KEY，无法提交");
+    process.exitCode = 1;
+    return;
+  }
+  const site = loadSiteConfig();
+  const { send, overflow } = splitDailyQuota(urls);
   const result = await pushIndexNow({
-    host: site.domain,
-    key,
-    keyLocation: `https://${site.domain}/${key}.txt`,
-    urls,
+    apiKey,
+    siteUrl: `https://${site.domain}`,
+    urls: send,
   });
-  console.log(`[indexnow] 接收 ${urls.length - result.failed.length} 条 / 批次状态 ${result.statuses.join(",")}`);
-  if (result.failed.length > 0) {
-    writePending(PENDING_FILE, result.failed);
-    console.error(`[indexnow] 失败 ${result.failed.length} 条，已保留到下一轮`);
+  const failed = [...result.failed, ...overflow];
+  console.log(
+    `[indexnow] 接收 ${send.length - result.failed.length} 条 / 批次状态 ${result.statuses.join(",")}${overflow.length > 0 ? ` / 超出日额度 ${overflow.length} 条` : ""}`,
+  );
+  if (failed.length > 0) {
+    writePending(PENDING_FILE, failed);
+    console.error(`[indexnow] 失败或顺延 ${failed.length} 条，已保留到下一轮`);
     process.exitCode = 1;
     return;
   }

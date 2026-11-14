@@ -5,9 +5,19 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { PluginEntry } from "@dsh-crate/schema";
 import { loadSiteConfig, REPO_ROOT } from "./config.ts";
-import { chunkUrls, mergePending, pushIndexNow, readPending, selectIndexNowUrls, writePending } from "./indexnow.ts";
+import {
+  BING_SUBMIT_ENDPOINT,
+  chunkUrls,
+  mergePending,
+  pushIndexNow,
+  readPending,
+  selectIndexNowUrls,
+  splitDailyQuota,
+  writePending,
+} from "./indexnow.ts";
 
 const ORIGIN = "https://dshcrate.com";
+const API_KEY = "test-api-key";
 
 /** 构造最小可用条目，只覆盖用例关心的字段。 */
 function makeEntry(overrides: Partial<PluginEntry> & { id: string }): PluginEntry {
@@ -89,16 +99,24 @@ test("mergePending：去重且保留原顺序", () => {
   assert.deepEqual(mergePending(["u1", "u2"], ["u2", "u3"]), ["u1", "u2", "u3"]);
 });
 
-/** 分批按协议上限切分，非法批次大小直接报错。 */
-test("chunkUrls：按上限分批", () => {
-  const urls = Array.from({ length: 10_001 }, (_, index) => `https://example.com/${index}`);
-  const batches = chunkUrls(urls);
-  assert.deepEqual(batches.map((batch) => batch.length), [10_000, 1]);
+/** 分批按 Bing API 的 500 条上限切分，非法批次大小直接报错。 */
+test("chunkUrls：按 500 条上限分批", () => {
+  const urls = Array.from({ length: 501 }, (_, index) => `https://example.com/${index}`);
+  assert.deepEqual(chunkUrls(urls).map((batch) => batch.length), [500, 1]);
   assert.throws(() => chunkUrls(urls, 0), /分批大小非法/);
 });
 
-/** 正常推送：请求体字段完整，成功后无失败列表。 */
-test("pushIndexNow：请求体与成功状态", async () => {
+/** 每日额度切分：超出部分留到下一轮。 */
+test("splitDailyQuota：按 10000 条/天截断", () => {
+  const urls = Array.from({ length: 10_001 }, (_, index) => `https://example.com/${index}`);
+  const { send, overflow } = splitDailyQuota(urls);
+  assert.equal(send.length, 10_000);
+  assert.equal(overflow.length, 1);
+  assert.throws(() => splitDailyQuota(urls, 0), /每日额度非法/);
+});
+
+/** 正常推送：请求地址带 apikey，请求体含 siteUrl 与 urlList。 */
+test("pushIndexNow：请求地址与请求体", async () => {
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
@@ -106,31 +124,50 @@ test("pushIndexNow：请求体与成功状态", async () => {
   }) as unknown as typeof fetch;
   const urls = [`${ORIGIN}/p/a/b`];
   const result = await pushIndexNow({
-    host: "dshcrate.com",
-    key: "d3105154d2d44d16909df778a137ec86",
-    keyLocation: "https://dshcrate.com/key.txt",
+    apiKey: API_KEY,
+    siteUrl: ORIGIN,
     urls,
     fetchImpl,
     wait: async () => {},
   });
   assert.deepEqual(result.statuses, [200]);
   assert.deepEqual(result.failed, []);
-  assert.equal(calls[0]?.url, "https://api.indexnow.org/indexnow");
-  assert.equal(calls[0]?.body.host, "dshcrate.com");
+  assert.ok(calls[0]?.url.startsWith(BING_SUBMIT_ENDPOINT));
+  assert.ok(calls[0]?.url.includes(`apikey=${API_KEY}`));
+  assert.equal(calls[0]?.body.siteUrl, ORIGIN);
   assert.deepEqual(calls[0]?.body.urlList, urls);
 });
 
-/** 异常场景：429 重试后成功；普通 4xx 不重试并保留 URL。 */
-test("pushIndexNow：429 重试，400 直接失败", async () => {
+/** 501 条会拆成两批请求。 */
+test("pushIndexNow：按 500 条分批发送", async () => {
+  let requests = 0;
+  const fetchImpl = (async () => {
+    requests++;
+    return new Response("", { status: 200 });
+  }) as unknown as typeof fetch;
+  const urls = Array.from({ length: 501 }, (_, index) => `${ORIGIN}/p/a/${index}`);
+  const result = await pushIndexNow({
+    apiKey: API_KEY,
+    siteUrl: ORIGIN,
+    urls,
+    fetchImpl,
+    wait: async () => {},
+  });
+  assert.equal(requests, 2);
+  assert.deepEqual(result.statuses, [200, 200]);
+  assert.deepEqual(result.failed, []);
+});
+
+/** 异常场景：429 重试后成功；普通 4xx 不重试并保留 URL；缺 key 直接报错。 */
+test("pushIndexNow：重试、失败保留与参数校验", async () => {
   let attempts = 0;
   const retryFetch = (async () => {
     attempts++;
     return new Response("", { status: attempts === 1 ? 429 : 200 });
   }) as unknown as typeof fetch;
   const retried = await pushIndexNow({
-    host: "dshcrate.com",
-    key: "d3105154d2d44d16909df778a137ec86",
-    keyLocation: "https://dshcrate.com/key.txt",
+    apiKey: API_KEY,
+    siteUrl: ORIGIN,
     urls: [`${ORIGIN}/p/a/b`],
     fetchImpl: retryFetch,
     wait: async () => {},
@@ -144,9 +181,8 @@ test("pushIndexNow：429 重试，400 直接失败", async () => {
     return new Response("", { status: 400 });
   }) as unknown as typeof fetch;
   const failed = await pushIndexNow({
-    host: "dshcrate.com",
-    key: "d3105154d2d44d16909df778a137ec86",
-    keyLocation: "https://dshcrate.com/key.txt",
+    apiKey: API_KEY,
+    siteUrl: ORIGIN,
     urls: [`${ORIGIN}/p/a/b`],
     fetchImpl: failFetch,
     wait: async () => {},
@@ -154,6 +190,11 @@ test("pushIndexNow：429 重试，400 直接失败", async () => {
   assert.equal(rejected, 1);
   assert.deepEqual(failed.statuses, [400]);
   assert.deepEqual(failed.failed, [`${ORIGIN}/p/a/b`]);
+
+  await assert.rejects(
+    pushIndexNow({ apiKey: " ", siteUrl: ORIGIN, urls: [], fetchImpl: failFetch }),
+    /缺少 Bing Webmaster API key/,
+  );
 });
 
 /** 读写待推送文件：缺失、损坏与非法 URL 都按空处理。 */
@@ -171,7 +212,7 @@ test("readPending / writePending：容错与回读", () => {
   }
 });
 
-/** 验证 key 文件与 site.config.json 保持一致，防止上线后 403。 */
+/** 验证 key 文件与 site.config.json 保持一致（IndexNow 备用通道仍保留）。 */
 test("IndexNow key 文件与配置一致", () => {
   const site = loadSiteConfig();
   assert.match(site.indexNowKey, /^[a-f0-9]{32}$/i);
