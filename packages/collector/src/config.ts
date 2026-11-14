@@ -12,6 +12,8 @@ export interface SiteConfig {
   tagline: string;
   taglineZh: string;
   domain: string;
+  /** IndexNow 验证 key：公开串，对应站点根目录的 `<key>.txt`。 */
+  indexNowKey: string;
   basePath: string;
   repoUrl: string;
   dataBaseUrl: string;

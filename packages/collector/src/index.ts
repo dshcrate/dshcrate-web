@@ -1,6 +1,8 @@
 import type { ArtifactIndex } from "@dsh-crate/schema";
 import { SCHEMA_VERSION, type PluginEntry } from "@dsh-crate/schema";
 import { loadCatalog, mergeEntries, saveCatalog, catalogPath } from "./store.ts";
+import { loadSiteConfig } from "./config.ts";
+import { mergePending, PENDING_FILE, readPending, selectIndexNowUrls, writePending } from "./indexnow.ts";
 import {
   buildMeta,
   syncToWebPublic,
@@ -492,6 +494,16 @@ async function main(): Promise<void> {
   const saved = saveCatalog(merged.catalog);
   log(args.silent, `[collector] 合并完成：新增 ${merged.added} / 覆盖 ${merged.updated} / 合计 ${active.length} 条`);
   log(args.silent, `[collector] store 已写入 ${saved}`);
+
+  // IndexNow 只推「新增 + 实质变更」；上一轮没推成功的 URL 先合并进来，避免丢失
+  const origin = `https://${loadSiteConfig().domain}`;
+  const indexNow = selectIndexNowUrls(prev.entries, active, origin);
+  const pendingUrls = mergePending(readPending(PENDING_FILE), indexNow.urls);
+  writePending(PENDING_FILE, pendingUrls);
+  log(
+    args.silent,
+    `[collector] IndexNow：新增 ${indexNow.added} / 变更 ${indexNow.changed} / 待推送 ${pendingUrls.length}${indexNow.skippedNoBaseline ? "（无基线，本轮只保留历史待推）" : ""}`,
+  );
 
   const meta = buildMeta(active);
   log(

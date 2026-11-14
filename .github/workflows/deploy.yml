@@ -114,6 +114,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: 推送 IndexNow
+        # 只推本轮新增/实质变更的详情页；失败不阻断部署，未成功的 URL 留到下一轮。
+        continue-on-error: true
+        run: npm run indexnow:push
+
   # 失败告警：构建或部署挂了就在仓库里开 Issue。
   # 定时任务（凌晨 2:17）失败时没人盯着页面，只能靠 Issue 把问题推到眼前。
   notify-failure:

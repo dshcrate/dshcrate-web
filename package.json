@@ -13,6 +13,7 @@
     "build:data": "tsx packages/collector/src/index.ts --build",
     "build:site": "npm run collect -- --source auto --build && npm run build:sitemap && npm run build",
     "build:sitemap": "tsx packages/collector/src/sitemap.ts",
+    "indexnow:push": "tsx packages/collector/src/indexnow.ts",
     "dev": "npm run dev -w @dsh-crate/web",
     "build": "npm run build -w @dsh-crate/web",
     "preview": "npm run preview -w @dsh-crate/web",
