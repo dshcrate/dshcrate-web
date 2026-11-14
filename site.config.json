@@ -4,6 +4,7 @@
   "tagline": "把 DSH 生态的插件收进一个箱子",
   "taglineZh": "按星标与更新活跃度排序，一页看清哪个插件值得装",
   "domain": "dshcrate.com",
+  "bingSiteUrl": "https://dshcrate.com",
   "indexNowKey": "d3105154d2d44d16909df778a137ec86",
   "basePath": "",
   "repoUrl": "https://github.com/dshcrate/dshcrate-web",

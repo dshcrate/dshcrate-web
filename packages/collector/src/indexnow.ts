@@ -187,6 +187,11 @@ async function postBatch(options: PushOptions, urls: string[]): Promise<number> 
         body,
       });
       status = response.status;
+      // 失败时打印响应正文：Bing 会返回 InvalidApiKey / InvalidSiteUrl 等具体原因
+      if (status < 200 || status >= 300) {
+        const detail = (await response.text().catch(() => "")).trim().slice(0, 200);
+        console.error(`[indexnow] 批次失败 ${status}${detail ? `：${detail}` : ""}`);
+      }
     } catch {
       status = 0;
     }
@@ -231,7 +236,7 @@ async function main(): Promise<void> {
   const { send, overflow } = splitDailyQuota(urls);
   const result = await pushIndexNow({
     apiKey,
-    siteUrl: `https://${site.domain}`,
+    siteUrl: site.bingSiteUrl,
     urls: send,
   });
   const failed = [...result.failed, ...overflow];

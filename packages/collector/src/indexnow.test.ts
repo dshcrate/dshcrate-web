@@ -17,6 +17,8 @@ import {
 } from "./indexnow.ts";
 
 const ORIGIN = "https://dshcrate.com";
+/** 实测 SubmitUrlbatch 接受不带末尾斜杠的站点地址。 */
+const SITE_URL = "https://dshcrate.com";
 const API_KEY = "test-api-key";
 
 /** 构造最小可用条目，只覆盖用例关心的字段。 */
@@ -125,7 +127,7 @@ test("pushIndexNow：请求地址与请求体", async () => {
   const urls = [`${ORIGIN}/p/a/b`];
   const result = await pushIndexNow({
     apiKey: API_KEY,
-    siteUrl: ORIGIN,
+    siteUrl: SITE_URL,
     urls,
     fetchImpl,
     wait: async () => {},
@@ -134,7 +136,7 @@ test("pushIndexNow：请求地址与请求体", async () => {
   assert.deepEqual(result.failed, []);
   assert.ok(calls[0]?.url.startsWith(BING_SUBMIT_ENDPOINT));
   assert.ok(calls[0]?.url.includes(`apikey=${API_KEY}`));
-  assert.equal(calls[0]?.body.siteUrl, ORIGIN);
+  assert.equal(calls[0]?.body.siteUrl, SITE_URL);
   assert.deepEqual(calls[0]?.body.urlList, urls);
 });
 
@@ -148,7 +150,7 @@ test("pushIndexNow：按 500 条分批发送", async () => {
   const urls = Array.from({ length: 501 }, (_, index) => `${ORIGIN}/p/a/${index}`);
   const result = await pushIndexNow({
     apiKey: API_KEY,
-    siteUrl: ORIGIN,
+    siteUrl: SITE_URL,
     urls,
     fetchImpl,
     wait: async () => {},
@@ -167,7 +169,7 @@ test("pushIndexNow：重试、失败保留与参数校验", async () => {
   }) as unknown as typeof fetch;
   const retried = await pushIndexNow({
     apiKey: API_KEY,
-    siteUrl: ORIGIN,
+    siteUrl: SITE_URL,
     urls: [`${ORIGIN}/p/a/b`],
     fetchImpl: retryFetch,
     wait: async () => {},
@@ -182,7 +184,7 @@ test("pushIndexNow：重试、失败保留与参数校验", async () => {
   }) as unknown as typeof fetch;
   const failed = await pushIndexNow({
     apiKey: API_KEY,
-    siteUrl: ORIGIN,
+    siteUrl: SITE_URL,
     urls: [`${ORIGIN}/p/a/b`],
     fetchImpl: failFetch,
     wait: async () => {},
@@ -219,4 +221,10 @@ test("IndexNow key 文件与配置一致", () => {
   const keyFile = resolve(REPO_ROOT, "packages/web/public", `${site.indexNowKey}.txt`);
   assert.ok(existsSync(keyFile), `缺少 key 文件：${keyFile}`);
   assert.equal(readFileSync(keyFile, "utf8").trim(), site.indexNowKey);
+});
+
+/** Bing 提交用站点地址必须与域名一致（末尾斜杠可有可无）。 */
+test("bingSiteUrl 与域名一致", () => {
+  const site = loadSiteConfig();
+  assert.equal(site.bingSiteUrl.replace(/\/$/, ""), `https://${site.domain}`);
 });

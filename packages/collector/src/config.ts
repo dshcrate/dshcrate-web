@@ -12,6 +12,8 @@ export interface SiteConfig {
   tagline: string;
   taglineZh: string;
   domain: string;
+  /** Bing Webmaster 提交用的站点地址：以实测 SubmitUrlbatch 可接受的形式为准。 */
+  bingSiteUrl: string;
   /** IndexNow 验证 key：公开串，对应站点根目录的 `<key>.txt`。 */
   indexNowKey: string;
   basePath: string;
