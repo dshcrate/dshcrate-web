@@ -19,11 +19,17 @@ import { DATA_DIR, loadSiteConfig } from "./config.ts";
 /** Bing Webmaster URL Submission API，鉴权走 query 里的 apikey。 */
 export const BING_SUBMIT_ENDPOINT = "https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlbatch";
 
+/** 查询当天剩余提交配额的接口。 */
+export const BING_QUOTA_ENDPOINT = "https://ssl.bing.com/webmaster/api.svc/json/GetUrlSubmissionQuota";
+
 /** 单次请求上限，Bing API 规定。 */
 export const BING_BATCH_SIZE = 500;
 
-/** 每域名每天的提交上限，Bing API 规定（UTC 零点重置）。 */
-export const BING_DAILY_QUOTA = 10_000;
+/** 每轮最大预算；配额涨到 1 万后会自动用满，无需改代码。 */
+export const MAX_DAILY_QUOTA = 10_000;
+
+/** 配额查询失败时的保守预算，避免直接撞 400。 */
+export const FALLBACK_DAILY_QUOTA = 100;
 
 /** 待推送文件：collect 写入，全部成功接收后删除。 */
 export const PENDING_FILE = resolve(DATA_DIR, "indexnow-pending.json");
@@ -148,10 +154,50 @@ export function chunkUrls(urls: readonly string[], size = BING_BATCH_SIZE): stri
  */
 export function splitDailyQuota(
   urls: readonly string[],
-  quota = BING_DAILY_QUOTA,
+  quota = MAX_DAILY_QUOTA,
 ): { send: string[]; overflow: string[] } {
   if (!Number.isInteger(quota) || quota < 1) throw new Error(`每日额度非法：${quota}`);
   return { send: [...urls.slice(0, quota)], overflow: [...urls.slice(quota)] };
+}
+
+/** 读取环境变量里的每日预算；缺失或非法时用默认上限。 */
+export function readDailyCap(raw: string | undefined): number {
+  const value = Number.parseInt(raw ?? "", 10);
+  return Number.isInteger(value) && value > 0 ? value : MAX_DAILY_QUOTA;
+}
+
+/**
+ * 结合实时剩余配额与预算上限，算出本轮最多发多少条。
+ * 入参：remaining Bing 返回的剩余配额（未知为 null）、cap 环境变量上限
+ * 返回：本轮预算；0 表示今天已无额度
+ */
+export function resolveDailyBudget(remaining: number | null, cap: number): number {
+  const safeCap = Number.isInteger(cap) && cap > 0 ? cap : MAX_DAILY_QUOTA;
+  if (remaining === null) return Math.min(FALLBACK_DAILY_QUOTA, safeCap);
+  return Math.max(0, Math.min(Math.floor(remaining), safeCap));
+}
+
+/**
+ * 查询 Bing 当天剩余提交配额。
+ * 入参：apiKey、siteUrl 与可注入的 fetchImpl
+ * 返回：剩余条数；接口失败或格式异常时返回 null
+ */
+export async function fetchBingQuota(options: {
+  apiKey: string;
+  siteUrl: string;
+  fetchImpl?: typeof fetch;
+}): Promise<number | null> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const endpoint = `${BING_QUOTA_ENDPOINT}?siteUrl=${encodeURIComponent(options.siteUrl)}&apikey=${encodeURIComponent(options.apiKey)}`;
+  try {
+    const response = await fetchImpl(endpoint);
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { d?: { DailyQuota?: unknown } };
+    const quota = payload.d?.DailyQuota;
+    return typeof quota === "number" && Number.isFinite(quota) && quota >= 0 ? quota : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 推送参数。fetchImpl / wait 可注入，便于单测。 */
@@ -233,7 +279,17 @@ async function main(): Promise<void> {
     return;
   }
   const site = loadSiteConfig();
-  const { send, overflow } = splitDailyQuota(urls);
+  const cap = readDailyCap(process.env.BING_DAILY_QUOTA);
+  const remaining = await fetchBingQuota({ apiKey, siteUrl: site.bingSiteUrl });
+  const budget = resolveDailyBudget(remaining, cap);
+  console.log(
+    `[indexnow] 队列 ${urls.length} 条 / 剩余配额 ${remaining ?? "未知（按保守值）"} / 本轮预算 ${budget} 条`,
+  );
+  if (budget <= 0) {
+    console.log("[indexnow] 今日配额已用完，留到下一轮");
+    return;
+  }
+  const { send, overflow } = splitDailyQuota(urls, budget);
   const result = await pushIndexNow({
     apiKey,
     siteUrl: site.bingSiteUrl,

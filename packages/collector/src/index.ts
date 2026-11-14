@@ -495,10 +495,10 @@ async function main(): Promise<void> {
   log(args.silent, `[collector] 合并完成：新增 ${merged.added} / 覆盖 ${merged.updated} / 合计 ${active.length} 条`);
   log(args.silent, `[collector] store 已写入 ${saved}`);
 
-  // IndexNow 只推「新增 + 实质变更」；上一轮没推成功的 URL 先合并进来，避免丢失
+  // IndexNow 只推「新增 + 实质变更」；本轮新变更排前面，历史积压顺延，避免新页面被旧队列挡在后面
   const origin = `https://${loadSiteConfig().domain}`;
   const indexNow = selectIndexNowUrls(prev.entries, active, origin);
-  const pendingUrls = mergePending(readPending(PENDING_FILE), indexNow.urls);
+  const pendingUrls = mergePending(indexNow.urls, readPending(PENDING_FILE));
   writePending(PENDING_FILE, pendingUrls);
   log(
     args.silent,

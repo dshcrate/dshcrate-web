@@ -119,6 +119,8 @@ jobs:
         continue-on-error: true
         env:
           BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
+          # 每轮预算上限；实际按 Bing 当天剩余配额取更小值，配额涨到 1 万会自动用满
+          BING_DAILY_QUOTA: 10000
         run: npm run indexnow:push
 
   # 失败告警：构建或部署挂了就在仓库里开 Issue。

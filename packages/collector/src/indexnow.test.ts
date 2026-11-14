@@ -6,11 +6,15 @@ import { test } from "node:test";
 import type { PluginEntry } from "@dsh-crate/schema";
 import { loadSiteConfig, REPO_ROOT } from "./config.ts";
 import {
+  BING_QUOTA_ENDPOINT,
   BING_SUBMIT_ENDPOINT,
   chunkUrls,
+  fetchBingQuota,
   mergePending,
   pushIndexNow,
+  readDailyCap,
   readPending,
+  resolveDailyBudget,
   selectIndexNowUrls,
   splitDailyQuota,
   writePending,
@@ -109,12 +113,51 @@ test("chunkUrls：按 500 条上限分批", () => {
 });
 
 /** 每日额度切分：超出部分留到下一轮。 */
-test("splitDailyQuota：按 10000 条/天截断", () => {
+test("splitDailyQuota：按额度截断", () => {
   const urls = Array.from({ length: 10_001 }, (_, index) => `https://example.com/${index}`);
   const { send, overflow } = splitDailyQuota(urls);
   assert.equal(send.length, 10_000);
   assert.equal(overflow.length, 1);
+  const small = splitDailyQuota(urls.slice(0, 200), 93);
+  assert.equal(small.send.length, 93);
+  assert.equal(small.overflow.length, 107);
   assert.throws(() => splitDailyQuota(urls, 0), /每日额度非法/);
+});
+
+/** 预算上限读取：缺失或非法时回退默认 10000。 */
+test("readDailyCap：非法值回退默认", () => {
+  assert.equal(readDailyCap(undefined), 10_000);
+  assert.equal(readDailyCap("500"), 500);
+  assert.equal(readDailyCap("0"), 10_000);
+  assert.equal(readDailyCap("abc"), 10_000);
+});
+
+/** 实时剩余配额与上限取小；查询失败时按保守值 100。 */
+test("resolveDailyBudget：按剩余配额与上限取小", () => {
+  assert.equal(resolveDailyBudget(93, 10_000), 93);
+  assert.equal(resolveDailyBudget(20_000, 10_000), 10_000);
+  assert.equal(resolveDailyBudget(0, 10_000), 0);
+  assert.equal(resolveDailyBudget(null, 10_000), 100);
+  assert.equal(resolveDailyBudget(null, 50), 50);
+});
+
+/** 配额查询：解析 DailyQuota，接口异常时返回 null。 */
+test("fetchBingQuota：解析与容错", async () => {
+  const okFetch = (async () =>
+    new Response(JSON.stringify({ d: { DailyQuota: 93 } }), { status: 200 })) as unknown as typeof fetch;
+  assert.equal(await fetchBingQuota({ apiKey: API_KEY, siteUrl: SITE_URL, fetchImpl: okFetch }), 93);
+
+  const calls: string[] = [];
+  const spyFetch = (async (input: string | URL | Request) => {
+    calls.push(String(input));
+    return new Response("", { status: 500 });
+  }) as unknown as typeof fetch;
+  assert.equal(await fetchBingQuota({ apiKey: API_KEY, siteUrl: SITE_URL, fetchImpl: spyFetch }), null);
+  assert.ok(calls[0]?.startsWith(BING_QUOTA_ENDPOINT));
+
+  const badFetch = (async () =>
+    new Response(JSON.stringify({ d: {} }), { status: 200 })) as unknown as typeof fetch;
+  assert.equal(await fetchBingQuota({ apiKey: API_KEY, siteUrl: SITE_URL, fetchImpl: badFetch }), null);
 });
 
 /** 正常推送：请求地址带 apikey，请求体含 siteUrl 与 urlList。 */
