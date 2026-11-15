@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isSitemapPath } from "./_middleware.ts";
+import { isGonePath, isSitemapPath } from "./_middleware.ts";
 
 /** 正常场景：索引、静态页分片、详情页分片都应命中。 */
 test("isSitemapPath 命中 sitemap 路径", () => {
@@ -29,4 +29,12 @@ test("isSitemapPath 处理空值与残缺路径", () => {
   assert.equal(isSitemapPath(""), false);
   assert.equal(isSitemapPath("/sitemap-.xml"), false);
   assert.equal(isSitemapPath("/sitemap.xml/"), false);
+});
+
+/** 已删除的验证文件必须返回 410，不能再落到静态资源或边缘缓存。 */
+test("isGonePath：已删除的验证文件", () => {
+  assert.equal(isGonePath("/sogousiteverification.txt"), true);
+  assert.equal(isGonePath("/baidu_verify_codeva-iFJaJ0PAjx.html"), true);
+  assert.equal(isGonePath("/sitemap-1.xml"), false);
+  assert.equal(isGonePath("/"), false);
 });

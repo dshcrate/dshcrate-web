@@ -18,6 +18,21 @@ const APP_ROUTES = [/^\/$/, /^\/top\/?$/, /^\/favorites\/?$/, /^\/submit\/?$/, /
 /** sitemap 路径：索引、静态页分片、详情页分片。 */
 const SITEMAP_PATH = /^\/sitemap(?:-pages|-\d+)?\.xml$/;
 
+/** 已删除的验证文件：直接返回 410，避免边缘缓存或 SPA 兜底继续把它们当成有效页面。 */
+const GONE_PATHS = new Set([
+  "/sogousiteverification.txt",
+  "/baidu_verify_codeva-iFJaJ0PAjx.html",
+]);
+
+/**
+ * 判断是否已删除的验证文件。
+ * 入参：pathname 为请求路径（不含域名与查询串）
+ * 返回：命中返回 true
+ */
+export function isGonePath(pathname: string): boolean {
+  return GONE_PATHS.has(pathname);
+}
+
 /**
  * 判断是否 sitemap 请求。
  * 这些文件由构建期生成，缺失时必须是真 404；否则会被 SPA 兜底改写成 200 HTML，
@@ -50,6 +65,13 @@ export async function onRequest(context: Ctx): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") return next();
 
   const { pathname } = new URL(request.url);
+  // 已删除的验证文件：410 直接返回，不读静态资源，也不会命中旧缓存
+  if (isGonePath(pathname)) {
+    return new Response("Gone", {
+      status: 410,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   // sitemap 必须先确认文件真实存在：缺失时返回 404，不能被 SPA 兜底成 200 HTML
   if (isSitemapPath(pathname)) {
     const asset = await env.ASSETS.fetch(new URL(pathname, request.url));
