@@ -8,6 +8,8 @@ on:
   schedule:
     # 每天 UTC 18:17（北京 02:17）刷新收录数据
     - cron: "17 18 * * *"
+    # UTC 00:00（北京 08:00）配额重置后，北京 09:00 再跑一轮，保证每天拿到满额推送
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       rescue:
