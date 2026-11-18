@@ -5,6 +5,7 @@
     "jsonchao/prompt-optimizer",
     "linshenkx/prompt-optimizer",
     "tencent-hunyuan/hy-memory",
-    "heydamir/unslop"
+    "heydamir/unslop",
+    "pbakaus/impeccable"
   ]
 }
