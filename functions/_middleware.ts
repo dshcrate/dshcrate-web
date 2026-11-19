@@ -24,6 +24,91 @@ const GONE_PATHS = new Set([
   "/baidu_verify_codeva-iFJaJ0PAjx.html",
 ]);
 
+/** 详情页路径：/p/owner/repo（允许一个结尾斜杠）。 */
+const DETAIL_PATH = /^\/p\/([^/]+)\/([^/]+)\/?$/;
+
+/** 站点品牌与域名：详情页的静态 meta 不依赖客户端 JS 也要成立。 */
+const SITE_ORIGIN = "https://dshcrate.com";
+const SITE_NAME = "DSH 插件箱子";
+
+/**
+ * 把 URL 段里的特殊字符转成 HTML 实体。
+ * 入参：value 为任意文本
+ * 返回：可直接拼进标签属性的安全文本
+ */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    return "&#39;";
+  });
+}
+
+/** 详情页不执行 JS 时也能读到的 meta。 */
+export interface DetailMeta {
+  title: string;
+  description: string;
+  canonical: string;
+}
+
+/**
+ * 详情页的静态 meta：标题与描述由 URL 生成，保证每页唯一。
+ *
+ * 入参：pathname —— 形如 /p/owner/repo 的路径
+ * 返回：命中详情页返回 meta；其他路径返回 null
+ */
+export function detailMeta(pathname: string): DetailMeta | null {
+  const match = DETAIL_PATH.exec(pathname);
+  if (match === null) return null;
+  let owner = match[1]!;
+  let repo = match[2]!;
+  try {
+    owner = decodeURIComponent(owner);
+    repo = decodeURIComponent(repo);
+  } catch {
+    // 非法的百分号编码保留原样：宁可显示编码后的路径，也不要让请求 500
+  }
+  return {
+    title: `${repo} · ${SITE_NAME} — DeepSeek Harness 插件`,
+    description: `${owner}/${repo} 的插件详情：功能简介、安装命令、README、版本更新与相似插件推荐，尽在 ${SITE_NAME}。`,
+    canonical: `${SITE_ORIGIN}/p/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+  };
+}
+
+/**
+ * 把详情页 meta 写进入口 HTML 的 head。
+ *
+ * 只替换固定标签，正文与脚本原样保留；不执行 JS 的爬虫也能读到本页唯一的
+ * 标题、描述与 canonical，客户端渲染后仍会覆盖成真实简介。
+ *
+ * 入参：html —— 入口页 HTML；meta —— detailMeta 的结果
+ * 返回：改写后的 HTML
+ */
+export function injectDetailMeta(html: string, meta: DetailMeta): string {
+  const title = escapeHtml(meta.title);
+  const description = escapeHtml(meta.description);
+  const canonical = escapeHtml(meta.canonical);
+  const apply = (current: string, pattern: RegExp, replacement: string): string =>
+    pattern.test(current) ? current.replace(pattern, replacement) : current;
+  let next = apply(html, /<title>[^<]*<\/title>/, `<title>${title}</title>`);
+  next = apply(next, /<meta name="description" content="[^"]*"\s*\/?>/, `<meta name="description" content="${description}" />`);
+  next = apply(next, /<meta property="og:title" content="[^"]*"\s*\/?>/, `<meta property="og:title" content="${title}" />`);
+  next = apply(next, /<meta property="og:description" content="[^"]*"\s*\/?>/, `<meta property="og:description" content="${description}" />`);
+  next = apply(next, /<meta property="og:url" content="[^"]*"\s*\/?>/, `<meta property="og:url" content="${canonical}" />`);
+  next = apply(next, /<meta name="twitter:title" content="[^"]*"\s*\/?>/, `<meta name="twitter:title" content="${title}" />`);
+  next = apply(next, /<meta name="twitter:description" content="[^"]*"\s*\/?>/, `<meta name="twitter:description" content="${description}" />`);
+  // canonical 原本由各页 useSeo 在渲染后写入；爬虫不执行 JS，所以详情页补一份静态的
+  if (!next.includes('rel="canonical"')) {
+    next = next.replace(
+      /(<meta name="description" content="[^"]*"\s*\/?>)/,
+      `$1\n    <link rel="canonical" href="${canonical}" />`,
+    );
+  }
+  return next;
+}
+
 /**
  * 判断是否已删除的验证文件。
  * 入参：pathname 为请求路径（不含域名与查询串）
@@ -86,6 +171,25 @@ export async function onRequest(context: Ctx): Promise<Response> {
   // 带扩展名的（js/css/json/svg/png/txt/xml）与入口页本身一律放行
   if (pathname === "/index.html" || /\.[a-z0-9]+$/i.test(pathname)) return next();
   if (OPEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return next();
+
+  // 详情页：不执行 JS 的爬虫（必应等）也要读到本页唯一的 title / description
+  const meta = detailMeta(pathname);
+  if (meta !== null) {
+    const asset = await env.ASSETS.fetch(new URL("/index.html", request.url));
+    if (asset.status === 200) {
+      const html = await asset.text();
+      const headers = new Headers(asset.headers);
+      // 改写后的长度、编码与 ETag 与原文不再对应，避免客户端按旧头解码
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      headers.delete("etag");
+      headers.set("content-type", "text/html; charset=utf-8");
+      // 同一路径的 meta 固定；部署后最多一小时旧版本，页面内容由客户端渲染校正
+      headers.set("cache-control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400");
+      return new Response(request.method === "HEAD" ? null : injectDetailMeta(html, meta), { status: 200, headers });
+    }
+  }
+
   if (APP_ROUTES.some((route) => route.test(pathname))) return next();
 
   // 其余路径：交付单页应用，但状态码用 404，前端路由会渲染 404 提示
