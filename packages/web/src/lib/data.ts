@@ -17,6 +17,8 @@ const url = (p: string) => `${BASE}data/${p}`;
 const FETCH_TIMEOUT_MS = 8000;
 /** 全量切片约 12 MB：弱网下经常超过 8 秒，单独放宽到 60 秒，避免被误判成失败 */
 const LITE_TIMEOUT_MS = 60_000;
+/** 反查表约 1.6 MB：详情页首屏依赖它，超时放到 20 秒并允许一次重试 */
+const IDMAP_TIMEOUT_MS = 20_000;
 
 /** 下载进度：received 为已接收字节（解压后），total 为 Content-Length（取不到为 null，gzip 时是压缩后大小） */
 export interface LoadProgress {
@@ -242,7 +244,9 @@ let idMapPending: Promise<Record<string, number>> | null = null;
 /** 整份反查表：详情页直达与收录弹窗都要用，同一会话只拉一次。 */
 function loadIdMap(cache: RequestCache = "default"): Promise<Record<string, number>> {
   if (cache === "reload" || !idMapPending) {
-    const pending = getJson<Record<string, number>>("idmap.json", cache);
+    const pending = getJson<Record<string, number>>("idmap.json", cache, undefined, IDMAP_TIMEOUT_MS)
+      // 一次重试：Googlebot 与弱网的首包可能超时，重试能显著降低详情页误判为失败。
+      .catch(() => getJson<Record<string, number>>("idmap.json", cache, undefined, IDMAP_TIMEOUT_MS));
     pending.catch(() => {
       if (idMapPending === pending) idMapPending = null;
     });

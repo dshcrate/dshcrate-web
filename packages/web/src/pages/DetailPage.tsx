@@ -14,6 +14,7 @@ import { meaningfulTags } from "../lib/labels";
 import { loadReadme, type ReadmeResult } from "../lib/readme";
 import { useT } from "../lib/i18n";
 import { ORIGIN, SEO_DEFAULT_DESCRIPTION, SEO_SITE_NAME, useSeo } from "../lib/seo";
+import { detailShouldNoindex } from "../lib/indexing";
 
 type MethodKey = "pnpm-profile" | "standalone" | "native" | "skills-add" | "manual";
 
@@ -83,8 +84,8 @@ export default function DetailPage() {
     title: entry ? `${entry.name} · ${SEO_SITE_NAME}` : SEO_SITE_NAME,
     description: seoDescription,
     path: `/p/${entry?.id ?? decoded}`,
-    // 仓库下架/收录缺失时页面只剩一句「未找到」：200 空页会被判软 404，明确告诉爬虫别索引
-    noindex: state === "missing" || state === "error",
+    // 只有「确认未收录」才 noindex；超时/部署窗口等加载失败交给重试，避免误伤有效页面
+    noindex: detailShouldNoindex(state),
     // 星标数不是用户评分，不能写成 aggregateRating；只声明项目本体与仓库地址
     jsonLd: entry
       ? {
