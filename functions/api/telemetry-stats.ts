@@ -121,8 +121,23 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .chart .axis{fill:var(--faint)}
 .chart .current{fill:none;stroke:var(--blue);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .chart .previous{fill:none;stroke:var(--orange);stroke-width:1.8;stroke-dasharray:5 5;stroke-linecap:round;stroke-linejoin:round}
-.chart .point{fill:#fff;stroke:var(--blue);stroke-width:2}
-.chart .pointPrev{fill:#fff;stroke:var(--orange);stroke-width:1.6}
+.chart .point{fill:#fff;stroke:var(--blue);stroke-width:2;pointer-events:none}
+.chart .pointPrev{fill:#fff;stroke:var(--orange);stroke-width:1.6;pointer-events:none}
+.chartWrap{position:relative}
+.chart .guide{stroke:#cbd5e1;stroke-width:1;stroke-dasharray:4 4;display:none}
+.chartTooltip{position:absolute;z-index:5;min-width:196px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(16,24,40,.14);pointer-events:none;font-size:12px;line-height:1.5}
+.chartTooltip[hidden]{display:none}
+.ttTop{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.ttDate{font-weight:600;color:var(--ink)}
+.ttDelta{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ttDelta.up{color:#e5484d}
+.ttDelta.down{color:var(--green)}
+.ttDelta.flat{color:var(--muted)}
+.ttRow{display:flex;align-items:center;gap:8px;margin-top:5px;color:var(--muted)}
+.ttRow i{width:8px;height:8px;border-radius:999px;flex:none}
+.ttRow i.blue{background:var(--blue)}
+.ttRow i.orange{background:var(--orange)}
+.ttRow b{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums}
 .platform{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;min-height:170px;padding:6px 8px 0}
 .vbarItem{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px;min-width:0}
 .vbarItem b{font-size:13px;font-variant-numeric:tabular-nums}
@@ -155,6 +170,75 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .loginCard button:hover{background:#1d4ed8}
 @media(max-width:900px){.mainGrid,.lowerGrid{grid-template-columns:1fr}.platform{min-height:150px}}
 @media(max-width:640px){main{padding:20px 14px 36px}.kpis{grid-template-columns:repeat(2,1fr)}.meta{display:none}.brand h1{font-size:18px}.kpi b{font-size:22px}}
+`;
+
+const CHART_SCRIPT = `
+(() => {
+  const svg = document.getElementById("trendChart");
+  const tip = document.getElementById("chartTooltip");
+  const guide = document.getElementById("chartGuide");
+  if (!svg || !tip || !guide) return;
+  const points = Array.from(svg.querySelectorAll("[data-point]"));
+  if (points.length === 0) return;
+  const wrap = svg.parentElement;
+  const fmt = (value) => Number(value).toLocaleString("zh-CN");
+  const hide = () => { tip.hidden = true; guide.style.display = "none"; };
+  const show = (point) => {
+    const box = svg.getBoundingClientRect();
+    const wrapBox = wrap.getBoundingClientRect();
+    const view = svg.viewBox.baseVal;
+    const cx = Number(point.getAttribute("cx"));
+    const cy = Number(point.getAttribute("cy"));
+    const left = box.left - wrapBox.left + (cx / view.width) * box.width;
+    const top = box.top - wrapBox.top + (cy / view.height) * box.height;
+    const day = point.getAttribute("data-day") || "";
+    const current = Number(point.getAttribute("data-value") || 0);
+    const rawPrev = point.getAttribute("data-prev") || "";
+    const hasPrev = rawPrev !== "";
+    const previous = hasPrev ? Number(rawPrev) : 0;
+    document.getElementById("ttDate").textContent = day;
+    document.getElementById("ttCurrent").textContent = fmt(current);
+    document.getElementById("ttPrevious").textContent = hasPrev ? fmt(previous) : "—";
+    document.getElementById("ttPrevRow2").style.display = hasPrev ? "" : "none";
+    const delta = document.getElementById("ttDelta");
+    if (!hasPrev) {
+      delta.textContent = "";
+      delta.className = "ttDelta flat";
+    } else if (previous === 0) {
+      delta.textContent = current === 0 ? "0%" : "新增";
+      delta.className = "ttDelta flat";
+    } else {
+      const change = ((current - previous) / previous) * 100;
+      delta.textContent = (change >= 0 ? "+" : "") + change.toFixed(1) + "%";
+      delta.className = "ttDelta " + (change > 0 ? "up" : change < 0 ? "down" : "flat");
+    }
+    tip.hidden = false;
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    tip.style.left = Math.min(Math.max(8, left + 16), wrapBox.width - tw - 8) + "px";
+    tip.style.top = Math.min(Math.max(8, top - th - 14), wrapBox.height - th - 8) + "px";
+    guide.setAttribute("x1", String(cx));
+    guide.setAttribute("x2", String(cx));
+    guide.setAttribute("y1", "18");
+    guide.setAttribute("y2", "230");
+    guide.style.display = "block";
+  };
+  const move = (event) => {
+    const box = svg.getBoundingClientRect();
+    const view = svg.viewBox.baseVal;
+    const x = ((event.clientX - box.left) / box.width) * view.width;
+    let best = points[0];
+    let distance = Infinity;
+    for (const point of points) {
+      const next = Math.abs(Number(point.getAttribute("cx")) - x);
+      if (next < distance) { distance = next; best = point; }
+    }
+    show(best);
+  };
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerdown", move);
+  svg.addEventListener("pointerleave", hide);
+})();
 `;
 
 const MARK = `<svg class="mark" viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><rect x=".5" y=".5" width="15" height="15"/><path d="M.5 3.5h12M12.5.5v12M3.5 12.5h12M3.5 3.5v12M6.5 3.5v9M9.5 3.5v9"/></svg>`;
@@ -277,7 +361,7 @@ function trendChart(stats: Stats): string {
     const row = current[0]!;
     const barWidth = 64;
     const barHeight = Math.max(4, (row.installs / ceiling) * plotHeight);
-    return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="单日活跃安装">${grid}<rect x="${left + plotWidth / 2 - barWidth / 2}" y="${baseline - barHeight}" width="${barWidth}" height="${barHeight}" rx="6" fill="#2563eb" opacity=".9"><title>${escapeHtml(row.day)} · ${row.installs}</title></rect><text x="${left + plotWidth / 2}" y="${baseline - barHeight - 8}" text-anchor="middle" fill="#2563eb" font-size="12">${row.installs}</text>${xLabels}</svg>`;
+    return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="单日活跃安装">${grid}<rect x="${left + plotWidth / 2 - barWidth / 2}" y="${baseline - barHeight}" width="${barWidth}" height="${barHeight}" rx="6" fill="#2563eb" opacity=".9" aria-label="${escapeHtml(row.day)} · ${row.installs}"></rect><text x="${left + plotWidth / 2}" y="${baseline - barHeight - 8}" text-anchor="middle" fill="#2563eb" font-size="12">${row.installs}</text>${xLabels}</svg></div>`;
   }
 
   const points = (rows: DayRow[]): Array<{ x: number; y: number; row: DayRow }> =>
@@ -288,8 +372,16 @@ function trendChart(stats: Stats): string {
   const currentLine = line(currentPoints);
   const area = `${currentLine} L ${currentPoints.at(-1)!.x} ${baseline} L ${currentPoints[0]!.x} ${baseline} Z`;
   const previousLine = previousPoints.length === 0 ? "" : `<path class="previous" d="${line(previousPoints)}"/>`;
-  const dots = (list: Array<{ x: number; y: number; row: DayRow }>, kind: string): string => list.map((point) => `<circle class="${kind}" cx="${point.x}" cy="${point.y}" r="${kind === "point" ? 3.5 : 2.5}"><title>${escapeHtml(point.row.day)} · ${point.row.installs}</title></circle>`).join("");
-  return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="活跃安装趋势"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><path class="current" d="${currentLine}"/>${previousLine}${dots(previousPoints, "pointPrev")}${dots(currentPoints, "point")}</svg>`;
+  const dots = (list: Array<{ x: number; y: number; row: DayRow }>, kind: string, interactive: boolean): string =>
+    list.map((point, index) => {
+      const previousValue = stats.previous[index]?.installs;
+      const data = interactive
+        ? ` data-point="true" data-day="${escapeHtml(point.row.day)}" data-value="${point.row.installs}" data-prev="${previousValue === undefined ? "" : previousValue}"`
+        : "";
+      return `<circle class="${kind}" cx="${point.x}" cy="${point.y}" r="${kind === "point" ? 3.5 : 2.5}" aria-label="${escapeHtml(point.row.day)} · ${point.row.installs}"${data}></circle>`;
+    }).join("");
+  const tooltip = `<div class="chartTooltip" id="chartTooltip" hidden><div class="ttTop"><span class="ttDate" id="ttDate"></span><span class="ttDelta" id="ttDelta"></span></div><div class="ttRow"><i class="blue"></i><span>本周期</span><b id="ttCurrent"></b></div><div class="ttRow" id="ttPrevRow2"><i class="orange"></i><span>上一周期</span><b id="ttPrevious"></b></div></div>`;
+  return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="活跃安装趋势"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><line id="chartGuide" class="guide" x1="0" y1="18" x2="0" y2="230"/><path class="current" d="${currentLine}"/>${previousLine}${dots(previousPoints, "pointPrev", false)}${dots(currentPoints, "point", true)}</svg>${tooltip}</div>`;
 }
 
 function platformCard(stats: Stats): string {
@@ -310,7 +402,7 @@ function rangeTabs(active: RangeKey): string {
 }
 
 /** 看板主体。 */
-export function renderStats(stats: Stats): string {
+export function renderStats(stats: Stats, nonce = ""): string {
   const cards = [
     ["pulse", "今日活跃", stats.today, "日活"],
     ["calendar", "近 7 天", stats.week, "周活"],
@@ -320,7 +412,9 @@ export function renderStats(stats: Stats): string {
   const versions = barRows(stats.versions.map((row) => ({ label: `v${row.v}`, value: row.installs })), "还没有数据", true);
   const regions = barRows(stats.regions.map((row) => ({ label: row.region === "global" ? "全球" : row.region === "china" ? "中国" : row.region, value: row.installs })), "还没有数据", true);
   const hasPrevious = stats.previous.some((row) => row.installs > 0);
-  return page("插件箱子 · 使用统计", `<header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`);
+  const body = `<header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`;
+  const script = nonce === "" ? "" : `<script nonce="${escapeHtml(nonce)}">${CHART_SCRIPT}</script>`;
+  return page("插件箱子 · 使用统计", body + script);
 }
 
 function offsets(length: number, endOffset: number): string[] {
@@ -376,14 +470,15 @@ export async function loadStats(db: D1Like, range: RangeKey): Promise<Stats> {
   };
 }
 
-function htmlResponse(html: string, status = 200, extra: Record<string, string> = {}): Response {
+function htmlResponse(html: string, status = 200, extra: Record<string, string> = {}, nonce?: string): Response {
+  const script = nonce === undefined ? "" : ` script-src 'nonce-${nonce}'`;
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
-    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+    "content-security-policy": `default-src 'none'; style-src 'unsafe-inline';${script} form-action 'self'; base-uri 'none'`,
   });
   for (const [key, value] of Object.entries(extra)) headers.set(key, value);
   return new Response(html, { status, headers });
@@ -408,12 +503,13 @@ export async function onRequest({ request, env }: Ctx): Promise<Response> {
   if (!env.DB) return htmlResponse(renderLogin("服务端未绑定统计数据库。"), 503);
 
   try {
+    const nonce = crypto.randomUUID().replace(/-/gu, "");
     const stats = await loadStats(env.DB, parseRange(url.searchParams.get("range")));
     const headers: Record<string, string> = {};
     if (url.searchParams.has("token")) {
       headers["set-cookie"] = `${COOKIE}=${encodeURIComponent(expected)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`;
     }
-    return htmlResponse(renderStats(stats), 200, headers);
+    return htmlResponse(renderStats(stats, nonce), 200, headers, nonce);
   } catch {
     return htmlResponse(renderLogin("读取统计失败，请稍后再试。"), 503);
   }

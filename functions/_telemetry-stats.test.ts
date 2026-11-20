@@ -37,13 +37,15 @@ test("shows a login form without data", () => {
 });
 
 test("renders the dashboard sections, summary, and escaped labels", () => {
-  const html = renderStats(baseStats);
+  const html = renderStats(baseStats, "test-nonce");
   assert.match(html, /今日活跃/);
   assert.match(html, /近 7 天/);
   assert.match(html, /趋势分析/);
   assert.match(html, /平台分布/);
   assert.match(html, /版本分布/);
   assert.match(html, /区域分布/);
+  assert.match(html, /chartTooltip/);
+  assert.match(html, /<script nonce="test-nonce">/);
   assert.match(html, /2026-11-20/);
   assert.match(html, /80\.0%/);
   assert.match(html, /&lt;bad&gt;/);
