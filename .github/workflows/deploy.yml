@@ -116,6 +116,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: 清理过期遥测
+        # D1 只保留 400 天；每天部署时顺带删一次，避免另开定时任务。
+        continue-on-error: true
+        run: npx --yes wrangler@4 d1 execute dsh-crate-telemetry --remote --command "DELETE FROM pings WHERE day < date('now','-400 days')"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: 推送 Bing
         # 带 apikey 走官方 URL Submission API；失败不阻断部署，未成功的 URL 留到下一轮。
         continue-on-error: true

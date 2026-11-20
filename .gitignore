@@ -25,3 +25,6 @@ dist/
 
 # e2e 脚手架生成的宿主目录，含凭据与运行时状态，绝不入库
 .dsh-web-home/
+
+# Wrangler 本地缓存
+.wrangler/

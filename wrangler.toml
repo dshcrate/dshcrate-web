@@ -9,3 +9,10 @@ pages_build_output_dir = "./packages/web/dist"
 [[kv_namespaces]]
 binding = "CURATION"
 id = "d85f5603191144c69742667aaec43f74"
+
+# 匿名使用统计：插件端默认关闭，用户主动开启后才会写入。
+[[d1_databases]]
+binding = "DB"
+database_name = "dsh-crate-telemetry"
+database_id = "ee909fff-f713-4466-9a53-2d2ec0cd3a85"
+
