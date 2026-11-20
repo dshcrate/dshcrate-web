@@ -34,51 +34,137 @@ interface VersionRow { v: string; installs: number }
 interface KindRow { kind: string; installs: number }
 interface RegionRow { region: string; installs: number }
 
+export type RangeKey = "today" | "yesterday" | "7" | "30";
+
 export interface Stats {
+  range: RangeKey;
+  rangeLabel: string;
   today: number;
   week: number;
   month: number;
   total: number;
-  daily: DayRow[];
+  rangeActive: number;
+  series: DayRow[];
+  previous: DayRow[];
   versions: VersionRow[];
   kinds: KindRow[];
   regions: RegionRow[];
   updatedAt: string;
 }
 
+interface RangeConfig {
+  label: string;
+  length: number;
+  filter: string;
+  previous?: { filter: string };
+}
+
+const RANGES: Record<RangeKey, RangeConfig> = {
+  today: { label: "今日", length: 1, filter: "day = date('now')" },
+  yesterday: { label: "昨日", length: 1, filter: "day = date('now','-1 day')" },
+  "7": {
+    label: "最近 7 日",
+    length: 7,
+    filter: "day >= date('now','-6 days')",
+    previous: { filter: "day >= date('now','-13 days') AND day <= date('now','-7 days')" },
+  },
+  "30": {
+    label: "最近 30 日",
+    length: 30,
+    filter: "day >= date('now','-29 days')",
+    previous: { filter: "day >= date('now','-59 days') AND day <= date('now','-30 days')" },
+  },
+};
+
 const COOKIE = "dsh_telemetry_stats";
 const CSS = `
-:root{color-scheme:light;--ink:#16202a;--muted:#667085;--line:#e4e7ec;--bg:#f5f6f8;--card:#fff;--accent:#1f6feb}
+:root{color-scheme:light;--ink:#172033;--muted:#6b7280;--faint:#98a2b3;--line:#e7ecf2;--bg:#f5f7fa;--card:#fff;--blue:#2563eb;--orange:#f59e0b;--green:#12b76a;--slate:#64748b}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB",sans-serif}
-main{max-width:1080px;margin:0 auto;padding:32px 20px 48px}
-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
-.mark{color:var(--accent);display:flex}
-h1{font-size:20px;line-height:1.2;margin:0;flex:1}
-.sub{color:var(--muted);font-size:12px;margin:2px 0 0}
-.logout{color:var(--muted);font-size:12px;text-decoration:none}
-.logout:hover{color:var(--accent)}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.card,section{background:var(--card);border:1px solid var(--line);border-radius:12px}
-.card{padding:16px}
-.card span{display:block;color:var(--muted);font-size:12px}
-.card b{display:block;margin-top:4px;font-size:28px;line-height:1.1;letter-spacing:-.02em}
-.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-top:16px}
-section{padding:16px 18px}
-h2{font-size:14px;margin:0 0 12px}
-.row{display:grid;grid-template-columns:88px minmax(60px,1fr) 52px;gap:10px;align-items:center;padding:4px 0;font-size:12px}
-.rowLabel{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row b{text-align:right;font-variant-numeric:tabular-nums}
-.bar{height:8px;background:#eef1f5;border-radius:999px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
-.empty{color:var(--muted);font-size:12px;margin:8px 0}
-.note{color:var(--muted);font-size:12px;margin-top:16px}
-.login{max-width:420px;margin:12vh auto 0}
-.login p{color:var(--muted);margin:0 0 16px}
-.login input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit}
-.login button{margin-top:12px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
-@media(max-width:720px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:28px 20px 48px}
+.topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px;flex:1}
+.mark{color:var(--blue);display:flex;flex:none}
+h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:12px;margin:3px 0 0}
+.meta{display:flex;align-items:center;gap:14px;color:var(--faint);font-size:12px;white-space:nowrap}
+.meta a{color:var(--muted);text-decoration:none}
+.meta a:hover{color:var(--blue)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tab{padding:7px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-size:13px;border:1px solid transparent}
+.tab:hover{background:#fff;border-color:var(--line);color:var(--ink)}
+.tab.on{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.22)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 2px rgba(16,24,40,.03)}
+.kpiIcon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none}
+.kpiIcon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.kpi:nth-child(1) .kpiIcon{background:#eaf1ff;color:var(--blue)}
+.kpi:nth-child(2) .kpiIcon{background:#fff5e6;color:var(--orange)}
+.kpi:nth-child(3) .kpiIcon{background:#e8f8f1;color:var(--green)}
+.kpi:nth-child(4) .kpiIcon{background:#eef2f6;color:var(--slate)}
+.kpiLabel{display:block;color:var(--muted);font-size:12px}
+.kpi b{display:block;font-size:25px;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi small{color:var(--faint);font-size:11px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.03);padding:16px 18px}
+.mainGrid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.75fr);gap:14px}
+.lowerGrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:14px;margin-top:14px}
+.cardHead{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.cardHead h2{font-size:14px;margin:0;line-height:1.4}
+.cardHead p{color:var(--muted);font-size:12px;margin:2px 0 0}
+.legend{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--muted);font-size:12px;white-space:nowrap}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:5px}
+.legend .blue{background:var(--blue)}
+.legend .orange{background:var(--orange)}
+.chart{width:100%;height:auto;display:block}
+.chart text{font-size:10px;fill:var(--faint)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .axis{fill:var(--faint)}
+.chart .current{fill:none;stroke:var(--blue);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.chart .previous{fill:none;stroke:var(--orange);stroke-width:1.8;stroke-dasharray:5 5;stroke-linecap:round;stroke-linejoin:round}
+.chart .point{fill:#fff;stroke:var(--blue);stroke-width:2}
+.chart .pointPrev{fill:#fff;stroke:var(--orange);stroke-width:1.6}
+.platform{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;min-height:170px;padding:6px 8px 0}
+.vbarItem{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px;min-width:0}
+.vbarItem b{font-size:13px;font-variant-numeric:tabular-nums}
+.vbarTrack{height:126px;width:58px;display:flex;align-items:flex-end;justify-content:center}
+.vbarTrack i{display:block;width:100%;border-radius:8px 8px 3px 3px;min-height:4px}
+.vbarItem span{color:var(--muted);font-size:12px}
+.blueBar{background:linear-gradient(180deg,#60a5fa,#2563eb)}
+.orangeBar{background:linear-gradient(180deg,#fbbf24,#f59e0b)}
+.miniGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.mini{border-radius:12px;padding:12px;background:#f8fafc;border:1px solid var(--line)}
+.mini span{display:block;color:var(--muted);font-size:11px}
+.mini b{display:block;font-size:22px;line-height:1.2;margin-top:3px;font-variant-numeric:tabular-nums}
+.mini.blue b{color:var(--blue)}
+.mini.orange b{color:var(--orange)}
+.barList{display:flex;flex-direction:column;gap:9px}
+.barRow{display:grid;grid-template-columns:minmax(68px,1fr) minmax(70px,2.2fr) minmax(82px,auto);gap:10px;align-items:center;font-size:12px}
+.barLabel{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.barTrack{height:8px;background:#eef2f7;border-radius:999px;overflow:hidden}
+.barTrack i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+.barValue{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.barValue small{color:var(--faint);margin-left:3px}
+.emptyState{color:var(--muted);font-size:12px;padding:38px 0;text-align:center}
+.note{color:var(--faint);font-size:12px;margin-top:14px}
+.loginWrap{max-width:430px;margin:12vh auto 0}
+.loginCard{padding:24px}
+.loginCard p{color:var(--muted);margin:0 0 16px}
+.loginCard input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;outline:none}
+.loginCard input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.loginCard button{margin-top:12px;width:100%;padding:10px 12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font:inherit;cursor:pointer}
+.loginCard button:hover{background:#1d4ed8}
+@media(max-width:900px){.mainGrid,.lowerGrid{grid-template-columns:1fr}.platform{min-height:150px}}
+@media(max-width:640px){main{padding:20px 14px 36px}.kpis{grid-template-columns:repeat(2,1fr)}.meta{display:none}.brand h1{font-size:18px}.kpi b{font-size:22px}}
 `;
+
+const MARK = `<svg class="mark" viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><rect x=".5" y=".5" width="15" height="15"/><path d="M.5 3.5h12M12.5.5v12M3.5 12.5h12M3.5 3.5v12M6.5 3.5v9M9.5 3.5v9"/></svg>`;
+
+const ICONS: Record<string, string> = {
+  pulse: '<path d="M2 9h3l2-5 3 10 2-5h4"/>',
+  calendar: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 1.5v4M10.5 1.5v4"/>',
+  users: '<circle cx="6" cy="6" r="2.5"/><path d="M1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><path d="M11 4.5a2 2 0 0 1 0 3.8M12.5 13.5c0-1.8-.8-3-2-3.6"/>',
+  box: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12M5 3v10M8 3v10M11 3v10"/>',
+};
 
 /** 把任意文本转成可安全拼进 HTML 的内容。 */
 export function escapeHtml(value: string): string {
@@ -111,7 +197,10 @@ function readCookie(header: string | null): string {
   }
 }
 
-const MARK = `<svg class="mark" viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><rect x=".5" y=".5" width="15" height="15"/><path d="M.5 3.5h12M12.5.5v12M3.5 12.5h12M3.5 3.5v12M6.5 3.5v9M9.5 3.5v9"/></svg>`;
+/** 合法的时间范围；未知值回落到最近 7 日。 */
+export function parseRange(value: string | null): RangeKey {
+  return value === "today" || value === "yesterday" || value === "30" ? value : "7";
+}
 
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(title)}</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
@@ -120,51 +209,166 @@ function page(title: string, body: string): string {
 /** 未登录 / 口令错误时的页面。 */
 export function renderLogin(message = ""): string {
   const hint = message === "" ? "输入访问口令查看匿名使用统计。" : escapeHtml(message);
-  return page("插件箱子 · 使用统计", `<header>${MARK}<div><h1>使用统计</h1><p class="sub">Plugin Crate · anonymous usage count</p></div></header><section class="login"><p>${hint}</p><form method="get" action="/api/telemetry-stats"><input type="password" name="token" autofocus required placeholder="访问口令"><button type="submit">查看</button></form></section>`);
+  return page("插件箱子 · 使用统计", `<div class="loginWrap"><header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · anonymous usage count</p></div></div></header><section class="card loginCard"><p>${hint}</p><form method="get" action="/api/telemetry-stats"><input type="password" name="token" autofocus required placeholder="访问口令"><button type="submit">查看</button></form></section></div>`);
 }
 
-/** 把统计值渲染成一行条形图；空数据给出明确提示。 */
-function barRows(rows: ReadonlyArray<{ label: string; value: number }>, empty: string): string {
-  if (rows.length === 0) return `<p class="empty">${escapeHtml(empty)}</p>`;
+function dayLabel(day: string): string {
+  return day.slice(5);
+}
+
+function percent(value: number, total: number): string {
+  return total <= 0 ? "0%" : `${(value / total * 100).toFixed(1)}%`;
+}
+
+function niceStep(max: number): number {
+  const rough = Math.max(1, max) / 4;
+  const power = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / power;
+  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return step * power;
+}
+
+function kpiIcon(name: string): string {
+  return `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] ?? ICONS.box}</svg>`;
+}
+
+function barRows(rows: ReadonlyArray<{ label: string; value: number }>, empty: string, showPercent: boolean): string {
+  if (rows.length === 0) return `<p class="emptyState">${escapeHtml(empty)}</p>`;
   const max = Math.max(1, ...rows.map((row) => row.value));
-  return rows.map((row) => `<div class="row"><span class="rowLabel" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span><span class="bar"><i style="width:${(row.value / max * 100).toFixed(1)}%"></i></span><b>${row.value}</b></div>`).join("");
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return `<div class="barList">${rows.map((row) => `<div class="barRow"><span class="barLabel" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</span><span class="barTrack"><i style="width:${(row.value / max * 100).toFixed(1)}%"></i></span><span class="barValue">${row.value}${showPercent ? `<small>${percent(row.value, total)}</small>` : ""}</span></div>`).join("")}</div>`;
+}
+
+/** 趋势图：当前周期与上一周期两条折线；单日区间退化为一个柱。 */
+function trendChart(stats: Stats): string {
+  const width = 720;
+  const height = 260;
+  const left = 42;
+  const right = 14;
+  const top = 18;
+  const bottom = 30;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const current = stats.series;
+  const previous = stats.previous;
+  if (current.every((row) => row.installs === 0) && previous.every((row) => row.installs === 0)) {
+    return `<p class="emptyState">这个区间还没有上报数据</p>`;
+  }
+
+  const max = Math.max(1, ...current.map((row) => row.installs), ...previous.map((row) => row.installs));
+  const step = niceStep(max);
+  const ceiling = step * 4;
+  const xAt = (index: number, length: number): number => length <= 1 ? left + plotWidth / 2 : left + (index / (length - 1)) * plotWidth;
+  const yAt = (value: number): number => top + plotHeight - (value / ceiling) * plotHeight;
+  const baseline = top + plotHeight;
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const value = ceiling - index * step;
+    const y = yAt(value);
+    return `<line class="grid" x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"/><text class="axis" x="${left - 8}" y="${y + 3}" text-anchor="end">${value}</text>`;
+  }).join("");
+
+  const xLabels = current.map((row, index) => {
+    const stride = current.length <= 7 ? 1 : 5;
+    if (index % stride !== 0 && index !== current.length - 1) return "";
+    return `<text x="${xAt(index, current.length)}" y="${height - 8}" text-anchor="middle">${escapeHtml(dayLabel(row.day))}</text>`;
+  }).join("");
+
+  if (current.length === 1) {
+    const row = current[0]!;
+    const barWidth = 64;
+    const barHeight = Math.max(4, (row.installs / ceiling) * plotHeight);
+    return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="单日活跃安装">${grid}<rect x="${left + plotWidth / 2 - barWidth / 2}" y="${baseline - barHeight}" width="${barWidth}" height="${barHeight}" rx="6" fill="#2563eb" opacity=".9"><title>${escapeHtml(row.day)} · ${row.installs}</title></rect><text x="${left + plotWidth / 2}" y="${baseline - barHeight - 8}" text-anchor="middle" fill="#2563eb" font-size="12">${row.installs}</text>${xLabels}</svg>`;
+  }
+
+  const points = (rows: DayRow[]): Array<{ x: number; y: number; row: DayRow }> =>
+    rows.map((row, index) => ({ x: xAt(index, rows.length), y: yAt(row.installs), row }));
+  const currentPoints = points(current);
+  const previousPoints = points(previous);
+  const line = (list: Array<{ x: number; y: number }>): string => list.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join(" ");
+  const currentLine = line(currentPoints);
+  const area = `${currentLine} L ${currentPoints.at(-1)!.x} ${baseline} L ${currentPoints[0]!.x} ${baseline} Z`;
+  const previousLine = previousPoints.length === 0 ? "" : `<path class="previous" d="${line(previousPoints)}"/>`;
+  const dots = (list: Array<{ x: number; y: number; row: DayRow }>, kind: string): string => list.map((point) => `<circle class="${kind}" cx="${point.x}" cy="${point.y}" r="${kind === "point" ? 3.5 : 2.5}"><title>${escapeHtml(point.row.day)} · ${point.row.installs}</title></circle>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="活跃安装趋势"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><path class="current" d="${currentLine}"/>${previousLine}${dots(previousPoints, "pointPrev")}${dots(currentPoints, "point")}</svg>`;
+}
+
+function platformCard(stats: Stats): string {
+  const web = stats.kinds.find((row) => row.kind === "web")?.installs ?? 0;
+  const desktop = stats.kinds.find((row) => row.kind === "desktop")?.installs ?? 0;
+  const total = web + desktop;
+  const max = Math.max(1, web, desktop);
+  const height = (value: number): number => value === 0 ? 4 : Math.max(6, Math.round(value / max * 126));
+  const body = total === 0
+    ? `<p class="emptyState">还没有数据</p>`
+    : `<div class="platform"><div class="vbarItem"><b>${web}</b><div class="vbarTrack"><i class="blueBar" style="height:${height(web)}px"></i></div><span>网页端</span></div><div class="vbarItem"><b>${desktop}</b><div class="vbarTrack"><i class="orangeBar" style="height:${height(desktop)}px"></i></div><span>桌面端</span></div></div><div class="miniGrid"><div class="mini blue"><span>网页端占比</span><b>${percent(web, total)}</b></div><div class="mini orange"><span>桌面端占比</span><b>${percent(desktop, total)}</b></div></div>`;
+  return `<section class="card"><div class="cardHead"><div><h2>平台分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${body}</section>`;
+}
+
+function rangeTabs(active: RangeKey): string {
+  const keys: RangeKey[] = ["today", "yesterday", "7", "30"];
+  return `<nav class="tabs">${keys.map((key) => `<a class="tab${key === active ? " on" : ""}" href="?range=${key}">${RANGES[key].label}</a>`).join("")}</nav>`;
 }
 
 /** 看板主体。 */
 export function renderStats(stats: Stats): string {
-  const kindLabel = (kind: string): string => (kind === "desktop" ? "桌面端" : kind === "web" ? "网页端" : kind);
-  const regionLabel = (region: string): string => (region === "global" ? "全球" : region === "china" ? "中国" : region);
   const cards = [
-    ["今日活跃", stats.today],
-    ["近 7 天", stats.week],
-    ["近 30 天", stats.month],
-    ["累计安装", stats.total],
-  ].map(([label, value]) => `<div class="card"><span>${String(label)}</span><b>${value}</b></div>`).join("");
-  const daily = barRows(stats.daily.map((row) => ({ label: row.day, value: row.installs })), "还没有数据");
-  const versions = barRows(stats.versions.map((row) => ({ label: row.v, value: row.installs })), "还没有数据");
-  const kinds = barRows(stats.kinds.map((row) => ({ label: kindLabel(row.kind), value: row.installs })), "还没有数据");
-  const regions = barRows(stats.regions.map((row) => ({ label: regionLabel(row.region), value: row.installs })), "还没有数据");
-  return page("插件箱子 · 使用统计", `<header>${MARK}<div><h1>使用统计</h1><p class="sub">最近更新 ${escapeHtml(stats.updatedAt)} · UTC</p></div><a class="logout" href="/api/telemetry-stats?logout=1">退出查看</a></header><div class="cards">${cards}</div><div class="grid"><section><h2>最近 30 天日活</h2>${daily}</section><section><h2>近 30 天版本分布</h2>${versions}</section></div><div class="grid"><section><h2>近 30 天平台分布</h2>${kinds}</section><section><h2>近 30 天区域分布</h2>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认关闭。每个安装每个 UTC 日最多计一次，跨版本去重时同一安装可能在不同版本各计一次。</p>`);
+    ["pulse", "今日活跃", stats.today, "日活"],
+    ["calendar", "近 7 天", stats.week, "周活"],
+    ["users", "近 30 天", stats.month, "月活"],
+    ["box", "累计安装", stats.total, "全部"],
+  ].map(([icon, label, value, sub]) => `<div class="kpi"><span class="kpiIcon">${kpiIcon(String(icon))}</span><div><span class="kpiLabel">${String(label)}</span><b>${Number(value)}</b><small>${String(sub)}</small></div></div>`).join("");
+  const versions = barRows(stats.versions.map((row) => ({ label: `v${row.v}`, value: row.installs })), "还没有数据", true);
+  const regions = barRows(stats.regions.map((row) => ({ label: row.region === "global" ? "全球" : row.region === "china" ? "中国" : row.region, value: row.installs })), "还没有数据", true);
+  const hasPrevious = stats.previous.some((row) => row.installs > 0);
+  return page("插件箱子 · 使用统计", `<header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`);
+}
+
+function offsets(length: number, endOffset: number): string[] {
+  const end = new Date();
+  end.setUTCHours(0, 0, 0, 0);
+  end.setUTCDate(end.getUTCDate() + endOffset);
+  return Array.from({ length }, (_, index) => {
+    const date = new Date(end);
+    date.setUTCDate(end.getUTCDate() - (length - 1 - index));
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function fillSeries(rows: DayRow[], length: number, endOffset: number): DayRow[] {
+  const byDay = new Map(rows.map((row) => [row.day, Number(row.installs) || 0]));
+  return offsets(length, endOffset).map((day) => ({ day, installs: byDay.get(day) ?? 0 }));
 }
 
 /** 读取所有看板数据；任何一条查询失败都会抛给调用方。 */
-async function loadStats(db: D1Like): Promise<Stats> {
-  const [daily, today, week, month, total, versions, kinds, regions] = await Promise.all([
-    db.prepare("SELECT day, COUNT(*) AS installs FROM pings GROUP BY day ORDER BY day DESC LIMIT 30").all<DayRow>(),
+export async function loadStats(db: D1Like, range: RangeKey): Promise<Stats> {
+  const config = RANGES[range];
+  const previousQuery = config.previous
+    ? db.prepare(`SELECT day, COUNT(*) AS installs FROM pings WHERE ${config.previous.filter} GROUP BY day ORDER BY day`).all<DayRow>()
+    : Promise.resolve({ results: [] as DayRow[] });
+  const [daily, previous, active, today, week, month, total, versions, kinds, regions] = await Promise.all([
+    db.prepare(`SELECT day, COUNT(*) AS installs FROM pings WHERE ${config.filter} GROUP BY day ORDER BY day`).all<DayRow>(),
+    previousQuery,
+    db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter}`).all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day = date('now')").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-6 days')").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-29 days')").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings").all<CountRow>(),
-    db.prepare("SELECT v, COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-29 days') GROUP BY v ORDER BY installs DESC").all<VersionRow>(),
-    db.prepare("SELECT kind, COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-29 days') GROUP BY kind ORDER BY installs DESC").all<KindRow>(),
-    db.prepare("SELECT region, COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-29 days') GROUP BY region ORDER BY installs DESC").all<RegionRow>(),
+    db.prepare(`SELECT v, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY v ORDER BY installs DESC`).all<VersionRow>(),
+    db.prepare(`SELECT kind, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY kind ORDER BY installs DESC`).all<KindRow>(),
+    db.prepare(`SELECT region, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY region ORDER BY installs DESC`).all<RegionRow>(),
   ]);
+  const series = fillSeries(daily.results ?? [], config.length, 0);
+  const previousSeries = config.previous ? fillSeries(previous.results ?? [], config.length, -config.length) : [];
   return {
-    daily: daily.results ?? [],
+    range,
+    rangeLabel: config.label,
     today: Number(today.results?.[0]?.installs ?? 0),
     week: Number(week.results?.[0]?.installs ?? 0),
     month: Number(month.results?.[0]?.installs ?? 0),
     total: Number(total.results?.[0]?.installs ?? 0),
+    rangeActive: Number(active.results?.[0]?.installs ?? 0),
+    series,
+    previous: previousSeries,
     versions: versions.results ?? [],
     kinds: kinds.results ?? [],
     regions: regions.results ?? [],
@@ -204,7 +408,7 @@ export async function onRequest({ request, env }: Ctx): Promise<Response> {
   if (!env.DB) return htmlResponse(renderLogin("服务端未绑定统计数据库。"), 503);
 
   try {
-    const stats = await loadStats(env.DB);
+    const stats = await loadStats(env.DB, parseRange(url.searchParams.get("range")));
     const headers: Record<string, string> = {};
     if (url.searchParams.has("token")) {
       headers["set-cookie"] = `${COOKIE}=${encodeURIComponent(expected)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`;
