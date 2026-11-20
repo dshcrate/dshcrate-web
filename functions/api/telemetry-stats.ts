@@ -84,7 +84,6 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 main{max-width:1180px;margin:0 auto;padding:28px 20px 48px}
 .topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px}
 .brand{display:flex;align-items:center;gap:12px;flex:1}
-.mark{color:var(--blue);display:flex;flex:none}
 h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .sub{color:var(--muted);font-size:12px;margin:3px 0 0}
 .meta{display:flex;align-items:center;gap:14px;color:var(--faint);font-size:12px;white-space:nowrap}
@@ -241,8 +240,6 @@ const CHART_SCRIPT = `
 })();
 `;
 
-const MARK = `<svg class="mark" viewBox="0 0 16 16" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><rect x=".5" y=".5" width="15" height="15"/><path d="M.5 3.5h12M12.5.5v12M3.5 12.5h12M3.5 3.5v12M6.5 3.5v9M9.5 3.5v9"/></svg>`;
-
 const ICONS: Record<string, string> = {
   pulse: '<path d="M2 9h3l2-5 3 10 2-5h4"/>',
   calendar: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 1.5v4M10.5 1.5v4"/>',
@@ -293,7 +290,7 @@ function page(title: string, body: string): string {
 /** 未登录 / 口令错误时的页面。 */
 export function renderLogin(message = ""): string {
   const hint = message === "" ? "输入访问口令查看匿名使用统计。" : escapeHtml(message);
-  return page("插件箱子 · 使用统计", `<div class="loginWrap"><header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · anonymous usage count</p></div></div></header><section class="card loginCard"><p>${hint}</p><form method="get" action="/api/telemetry-stats"><input type="password" name="token" autofocus required placeholder="访问口令"><button type="submit">查看</button></form></section></div>`);
+  return page("插件箱子 · 使用统计", `<div class="loginWrap"><header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · anonymous usage count</p></div></div></header><section class="card loginCard"><p>${hint}</p><form method="get" action="/api/telemetry-stats"><input type="password" name="token" autofocus required placeholder="访问口令"><button type="submit">查看</button></form></section></div>`);
 }
 
 function dayLabel(day: string): string {
@@ -412,7 +409,7 @@ export function renderStats(stats: Stats, nonce = ""): string {
   const versions = barRows(stats.versions.map((row) => ({ label: `v${row.v}`, value: row.installs })), "还没有数据", true);
   const regions = barRows(stats.regions.map((row) => ({ label: row.region === "global" ? "全球" : row.region === "china" ? "中国" : row.region, value: row.installs })), "还没有数据", true);
   const hasPrevious = stats.previous.some((row) => row.installs > 0);
-  const body = `<header class="topbar"><div class="brand">${MARK}<div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`;
+  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`;
   const script = nonce === "" ? "" : `<script nonce="${escapeHtml(nonce)}">${CHART_SCRIPT}</script>`;
   return page("插件箱子 · 使用统计", body + script);
 }
