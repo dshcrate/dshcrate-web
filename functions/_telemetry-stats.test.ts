@@ -10,6 +10,7 @@ const baseStats = {
   month: 8,
   total: 12,
   rangeActive: 5,
+  openedToday: 3,
   series: [
     { day: "2026-11-18", installs: 1 },
     { day: "2026-11-19", installs: 2 },
@@ -39,6 +40,7 @@ test("shows a login form without data", () => {
 test("renders the dashboard sections, summary, and escaped labels", () => {
   const html = renderStats(baseStats, "test-nonce");
   assert.match(html, /今日活跃/);
+  assert.match(html, /今日打开/);
   assert.match(html, /近 7 天/);
   assert.match(html, /趋势分析/);
   assert.match(html, /平台分布/);
@@ -60,6 +62,7 @@ test("renders the empty state when there are no rows", () => {
     month: 0,
     total: 0,
     rangeActive: 0,
+    openedToday: 0,
     series: [{ day: "2026-11-20", installs: 0 }],
     previous: [],
     versions: [],

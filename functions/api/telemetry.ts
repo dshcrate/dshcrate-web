@@ -29,6 +29,8 @@ export interface Ping {
   hv: string | null;
   kind: "desktop" | "web";
   region: string;
+  /** Present (and true) only on the day's first open of the plugin page. */
+  opened?: true;
 }
 
 const ID = /^[0-9a-f]{32}$/;
@@ -43,13 +45,14 @@ const REGION = /^[a-z]{2,10}$/;
  */
 export function validatePing(value: unknown): Ping | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-  const { id, v, hv, kind, region } = value as Record<string, unknown>;
+  const { id, v, hv, kind, region, opened } = value as Record<string, unknown>;
   if (typeof id !== "string" || !ID.test(id)) return null;
   if (typeof v !== "string" || !VERSION.test(v)) return null;
   if (!(hv === null || (typeof hv === "string" && VERSION.test(hv)))) return null;
   if (typeof kind !== "string" || !KIND.has(kind)) return null;
   if (typeof region !== "string" || !REGION.test(region)) return null;
-  return { id, v, hv, kind: kind as Ping["kind"], region };
+  if (!(opened === undefined || opened === true)) return null;
+  return { id, v, hv, kind: kind as Ping["kind"], region, ...(opened === true ? { opened: true as const } : {}) };
 }
 
 /** 处理一次上报。重复的 (day, id) 由主键忽略，仍返回 204。 */
@@ -73,10 +76,12 @@ export async function onRequest({ request, env }: Ctx): Promise<Response> {
 
   const day = new Date().toISOString().slice(0, 10);
   try {
+    // 当天第一次上报建行；之后带 opened:true 的第二次上报只把标记置 1。
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO pings (day, id, v, hv, kind, region) VALUES (?, ?, ?, ?, ?, ?)",
+      `INSERT INTO pings (day, id, v, hv, kind, region, opened) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (day, id) DO UPDATE SET opened = MAX(opened, excluded.opened)`,
     )
-      .bind(day, ping.id, ping.v, ping.hv, ping.kind, ping.region)
+      .bind(day, ping.id, ping.v, ping.hv, ping.kind, ping.region, ping.opened === true ? 1 : 0)
       .run();
   } catch {
     return new Response(null, { status: 503 });

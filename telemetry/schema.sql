@@ -7,5 +7,7 @@ CREATE TABLE IF NOT EXISTS pings (
   hv TEXT,
   kind TEXT NOT NULL,
   region TEXT NOT NULL,
+  -- 1 once the plugin page was opened that day.
+  opened INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, id)
 );

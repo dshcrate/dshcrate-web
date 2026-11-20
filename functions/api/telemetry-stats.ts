@@ -44,6 +44,7 @@ export interface Stats {
   month: number;
   total: number;
   rangeActive: number;
+  openedToday: number;
   series: DayRow[];
   previous: DayRow[];
   versions: VersionRow[];
@@ -93,7 +94,7 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .tab{padding:7px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-size:13px;border:1px solid transparent}
 .tab:hover{background:#fff;border-color:var(--line);color:var(--ink)}
 .tab.on{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.22)}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 2px rgba(16,24,40,.03)}
 .kpiIcon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none}
 .kpiIcon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -101,6 +102,7 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .kpi:nth-child(2) .kpiIcon{background:#fff5e6;color:var(--orange)}
 .kpi:nth-child(3) .kpiIcon{background:#e8f8f1;color:var(--green)}
 .kpi:nth-child(4) .kpiIcon{background:#eef2f6;color:var(--slate)}
+.kpi:nth-child(5) .kpiIcon{background:#f3e8ff;color:#7c3aed}
 .kpiLabel{display:block;color:var(--muted);font-size:12px}
 .kpi b{display:block;font-size:25px;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .kpi small{color:var(--faint);font-size:11px}
@@ -167,7 +169,7 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .loginCard input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .loginCard button{margin-top:12px;width:100%;padding:10px 12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font:inherit;cursor:pointer}
 .loginCard button:hover{background:#1d4ed8}
-@media(max-width:900px){.mainGrid,.lowerGrid{grid-template-columns:1fr}.platform{min-height:150px}}
+@media(max-width:900px){.mainGrid,.lowerGrid{grid-template-columns:1fr}.platform{min-height:150px}.kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){main{padding:20px 14px 36px}.kpis{grid-template-columns:repeat(2,1fr)}.meta{display:none}.brand h1{font-size:18px}.kpi b{font-size:22px}}
 `;
 
@@ -245,6 +247,7 @@ const ICONS: Record<string, string> = {
   calendar: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 1.5v4M10.5 1.5v4"/>',
   users: '<circle cx="6" cy="6" r="2.5"/><path d="M1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4"/><path d="M11 4.5a2 2 0 0 1 0 3.8M12.5 13.5c0-1.8-.8-3-2-3.6"/>',
   box: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12M5 3v10M8 3v10M11 3v10"/>',
+  eye: '<path d="M1.5 8s2.3-4 6.5-4 6.5 4 6.5 4-2.3 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="2"/>',
 };
 
 /** 把任意文本转成可安全拼进 HTML 的内容。 */
@@ -402,6 +405,7 @@ function rangeTabs(active: RangeKey): string {
 export function renderStats(stats: Stats, nonce = ""): string {
   const cards = [
     ["pulse", "今日活跃", stats.today, "日活"],
+    ["eye", "今日打开", stats.openedToday, `打开率 ${percent(stats.openedToday, stats.today)}`],
     ["calendar", "近 7 天", stats.week, "周活"],
     ["users", "近 30 天", stats.month, "月活"],
     ["box", "累计安装", stats.total, "全部"],
@@ -409,7 +413,7 @@ export function renderStats(stats: Stats, nonce = ""): string {
   const versions = barRows(stats.versions.map((row) => ({ label: `v${row.v}`, value: row.installs })), "还没有数据", true);
   const regions = barRows(stats.regions.map((row) => ({ label: row.region === "global" ? "全球" : row.region === "china" ? "中国" : row.region, value: row.installs })), "还没有数据", true);
   const hasPrevious = stats.previous.some((row) => row.installs > 0);
-  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次。</p>`;
+  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${cards}</div><div class="mainGrid"><section class="card"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${stats.rangeActive}</p></div><div class="legend"><span><i class="blue"></i>本周期</span>${hasPrevious ? '<span><i class="orange"></i>上一周期</span>' : ""}</div></div>${trendChart(stats)}</section>${platformCard(stats)}</div><div class="lowerGrid"><section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${versions}</section><section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${regions}</section></div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次，另有一次“当天打开过页面”的标记。</p>`;
   const script = nonce === "" ? "" : `<script nonce="${escapeHtml(nonce)}">${CHART_SCRIPT}</script>`;
   return page("插件箱子 · 使用统计", body + script);
 }
@@ -436,10 +440,11 @@ export async function loadStats(db: D1Like, range: RangeKey): Promise<Stats> {
   const previousQuery = config.previous
     ? db.prepare(`SELECT day, COUNT(*) AS installs FROM pings WHERE ${config.previous.filter} GROUP BY day ORDER BY day`).all<DayRow>()
     : Promise.resolve({ results: [] as DayRow[] });
-  const [daily, previous, active, today, week, month, total, versions, kinds, regions] = await Promise.all([
+  const [daily, previous, active, openedToday, today, week, month, total, versions, kinds, regions] = await Promise.all([
     db.prepare(`SELECT day, COUNT(*) AS installs FROM pings WHERE ${config.filter} GROUP BY day ORDER BY day`).all<DayRow>(),
     previousQuery,
     db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter}`).all<CountRow>(),
+    db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day = date('now') AND opened = 1").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day = date('now')").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-6 days')").all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE day >= date('now','-29 days')").all<CountRow>(),
@@ -458,6 +463,7 @@ export async function loadStats(db: D1Like, range: RangeKey): Promise<Stats> {
     month: Number(month.results?.[0]?.installs ?? 0),
     total: Number(total.results?.[0]?.installs ?? 0),
     rangeActive: Number(active.results?.[0]?.installs ?? 0),
+    openedToday: Number(openedToday.results?.[0]?.installs ?? 0),
     series,
     previous: previousSeries,
     versions: versions.results ?? [],

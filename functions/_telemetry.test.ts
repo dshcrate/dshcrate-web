@@ -14,6 +14,10 @@ test("accepts a complete ping", () => {
   assert.deepEqual(validatePing(valid), valid);
 });
 
+test("accepts the optional opened flag", () => {
+  assert.deepEqual(validatePing({ ...valid, opened: true }), { ...valid, opened: true });
+});
+
 test("accepts a null host version", () => {
   assert.deepEqual(validatePing({ ...valid, hv: null }), { ...valid, hv: null });
 });
@@ -29,6 +33,8 @@ test("rejects malformed pings", () => {
     { ...valid, hv: "0.2.1 extra" },
     { ...valid, kind: "cli" },
     { ...valid, region: "Global" },
+    { ...valid, opened: false },
+    { ...valid, opened: 1 },
   ];
   for (const value of bad) assert.equal(validatePing(value), null);
 });
