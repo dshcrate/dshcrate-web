@@ -18,11 +18,33 @@ const site = JSON.parse(readFileSync(resolve(here, "../../site.config.json"), "u
  */
 function buildVersion(): string {
   if (process.env.BUILD_VERSION) return process.env.BUILD_VERSION;
+
+  const root = resolve(here, "../..");
+
+  // 浅克隆时 rev-list 只数得到 1 个提交，会安静地给出错误的版本号（v1.0.1），
+  // 所以在计数之前先挡住。注意这里的错误不能被下面的 catch 吞掉，否则又退回静默降级。
+  let shallow: string;
+  try {
+    shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    console.warn("[build-version] 读不到 git 仓库信息（可能没有 .git），版本号回退为 v1.0.0");
+    return "v1.0.0";
+  }
+  if (shallow === "true") {
+    throw new Error(
+      "[build-version] 当前仓库是浅克隆，git 提交计数会恒为 1，版本号必然算错。" +
+        "请执行 git fetch --unshallow，或在构建前显式设置 BUILD_VERSION。",
+    );
+  }
+
   try {
     const count = Number.parseInt(
       execFileSync("git", ["rev-list", "--count", "HEAD", "--", ".", ":(exclude)curation"], {
         // 必须以仓库根目录为基准，否则 "." 只匹配到 packages/web，计数会偏小
-        cwd: resolve(here, "../.."),
+        cwd: root,
         encoding: "utf8",
       }).trim(),
       10,
