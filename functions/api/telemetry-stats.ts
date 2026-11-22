@@ -34,73 +34,34 @@ interface VersionRow { v: string; installs: number }
 interface KindRow { kind: string; installs: number }
 interface RegionRow { region: string; installs: number }
 
-export type RangeKey = "today" | "yesterday" | "7" | "30";
+/** 月度趋势的一个点；未来日期和上月不存在的日期为 null。 */
+export interface MonthPoint {
+  day: number;
+  installs: number | null;
+  opened: number | null;
+}
 
 export interface Stats {
-  range: RangeKey;
-  rangeLabel: string;
-  /** 区间内去重安装数 */
-  rangeActive: number;
-  /** 区间内打开过市场的去重安装数 */
-  rangeOpened: number;
-  /** 上一周期（单日为前一天）的去重安装数 */
-  previousActive: number;
-  /** 区间内每日活跃的平均值 */
+  monthLabel: string;
+  /** 本月去重安装数 */
+  monthActive: number;
+  /** 本月打开过市场的去重安装数 */
+  monthOpened: number;
+  /** 上月整月去重安装数，仅用于对比 */
+  lastMonthActive: number;
+  /** 本月每日活跃的平均值 */
   avgDaily: number;
   /** 全部时间累计安装 */
   total: number;
-  series: DayRow[];
-  previous: DayRow[];
-  /** 单日视图的近 7 日上下文 */
-  context: DayRow[];
+  /** 今天是本月的第几天 */
+  today: number;
+  series: MonthPoint[];
+  previous: MonthPoint[];
   versions: VersionRow[];
   kinds: KindRow[];
   regions: RegionRow[];
   updatedAt: string;
 }
-
-interface RangeConfig {
-  label: string;
-  days: number;
-  /** 序列结束日相对今天的偏移：今日 0，昨日 -1 */
-  endOffset: number;
-  filter: string;
-  previousFilter?: string;
-  previousActiveFilter: string;
-}
-
-const RANGES: Record<RangeKey, RangeConfig> = {
-  today: {
-    label: "今日",
-    days: 1,
-    endOffset: 0,
-    filter: "day = date('now')",
-    previousActiveFilter: "day = date('now','-1 day')",
-  },
-  yesterday: {
-    label: "昨日",
-    days: 1,
-    endOffset: -1,
-    filter: "day = date('now','-1 day')",
-    previousActiveFilter: "day = date('now','-2 days')",
-  },
-  "7": {
-    label: "最近 7 日",
-    days: 7,
-    endOffset: 0,
-    filter: "day >= date('now','-6 days')",
-    previousFilter: "day >= date('now','-13 days') AND day <= date('now','-7 days')",
-    previousActiveFilter: "day >= date('now','-13 days') AND day <= date('now','-7 days')",
-  },
-  "30": {
-    label: "最近 30 日",
-    days: 30,
-    endOffset: 0,
-    filter: "day >= date('now','-29 days')",
-    previousFilter: "day >= date('now','-59 days') AND day <= date('now','-30 days')",
-    previousActiveFilter: "day >= date('now','-59 days') AND day <= date('now','-30 days')",
-  },
-};
 
 const COOKIE = "dsh_telemetry_stats";
 const CSS = `
@@ -115,10 +76,6 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .meta{display:flex;align-items:center;gap:14px;color:var(--faint);font-size:12px;white-space:nowrap}
 .meta a{color:var(--muted);text-decoration:none}
 .meta a:hover{color:var(--blue)}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
-.tab{padding:7px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-size:13px;border:1px solid transparent}
-.tab:hover{background:#fff;border-color:var(--line);color:var(--ink)}
-.tab.on{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.22)}
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 2px rgba(16,24,40,.03);min-width:0}
 .kpiIcon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none}
@@ -146,17 +103,17 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .legend{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--muted);font-size:12px;white-space:nowrap}
 .legend i{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:5px}
 .legend .blue{background:var(--blue)}
-.legend .orange{background:var(--orange)}
 .legend .slate{background:var(--slate)}
 .chart{width:100%;height:auto;display:block}
 .chart text{font-size:10px;fill:var(--faint)}
 .chart .grid{stroke:var(--line);stroke-width:1}
 .chart .axis{fill:var(--faint)}
 .chart .current{fill:none;stroke:var(--blue);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
-.chart .opened{fill:none;stroke:var(--orange);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.chart .previous{fill:none;stroke:var(--slate);stroke-width:1.5;stroke-dasharray:5 5;stroke-linecap:round;stroke-linejoin:round}
+.chart .previous{fill:none;stroke:var(--slate);stroke-width:1.6;stroke-dasharray:5 5;stroke-linecap:round;stroke-linejoin:round}
 .chart .point{fill:#fff;stroke:var(--blue);stroke-width:2;pointer-events:none}
-.chart .pointPrev{fill:#fff;stroke:var(--slate);stroke-width:1.6;pointer-events:none}
+.chart .todayLine{stroke:#94a3b8;stroke-width:1;stroke-dasharray:4 4}
+.chart .todayLabel{fill:#475569;font-size:10px;font-weight:600}
+.chart .todayPoint{fill:var(--blue);stroke:#fff;stroke-width:2.5}
 .chartWrap{position:relative}
 .chart .guide{stroke:#cbd5e1;stroke-width:1;stroke-dasharray:4 4;display:none}
 .chartTooltip{position:absolute;z-index:5;min-width:210px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(16,24,40,.14);pointer-events:none;font-size:12px;line-height:1.5}
@@ -173,18 +130,6 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .ttRow i.orange{background:var(--orange)}
 .ttRow i.slate{background:var(--slate)}
 .ttRow b{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums}
-.singleDay{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:4px 2px 0}
-.singleLabel{display:block;color:var(--muted);font-size:12px}
-.singleMain b{display:block;font-size:44px;line-height:1.05;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:2px 0 4px}
-.singleSub{color:var(--faint);font-size:12px}
-.singleSide{text-align:right;color:var(--muted);font-size:12px;display:grid;gap:6px;justify-items:end}
-.sparkWrap{grid-column:1/-1;margin-top:8px;position:relative}
-.spark{width:100%;height:56px;display:block}
-.sparkArea{fill:rgba(37,99,235,.12)}
-.sparkLine{fill:none;stroke:var(--blue);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.sparkPoint{fill:#fff;stroke:var(--blue);stroke-width:1.6}
-.sparkPoint.on{fill:var(--blue);stroke:#fff;stroke-width:2}
-.sparkCaption{color:var(--faint);font-size:11px;margin-top:2px;text-align:right}
 .stackBar{display:flex;height:12px;border-radius:999px;overflow:hidden;background:#eef2f7;margin:16px 0 18px}
 .stackBar i{display:block;height:100%}
 .segBlue{background:linear-gradient(90deg,#60a5fa,#2563eb)}
@@ -212,8 +157,8 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .loginCard input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .loginCard button{margin-top:12px;width:100%;padding:10px 12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font:inherit;cursor:pointer}
 .loginCard button:hover{background:#1d4ed8}
-@media(max-width:900px){.breakdownGrid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.singleDay{grid-template-columns:1fr}.singleSide{justify-items:start;text-align:left}}
-@media(max-width:640px){main{padding:20px 14px 36px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.meta{display:none}.brand h1{font-size:18px}.kpi b{font-size:22px}.singleMain b{font-size:38px}}
+@media(max-width:900px){.breakdownGrid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:640px){main{padding:20px 14px 36px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.meta{display:none}.brand h1{font-size:18px}.kpi b{font-size:22px}}
 `;
 
 const CHART_SCRIPT = `
@@ -266,7 +211,7 @@ const CHART_SCRIPT = `
     guide.setAttribute("x1", String(cx));
     guide.setAttribute("x2", String(cx));
     guide.setAttribute("y1", "18");
-    guide.setAttribute("y2", String(view.height - 30));
+    guide.setAttribute("y2", String(view.height - 32));
     guide.style.display = "block";
   };
   const move = (event) => {
@@ -327,11 +272,6 @@ function readCookie(header: string | null): string {
   }
 }
 
-/** 合法的时间范围；未知值回落到最近 7 日。 */
-export function parseRange(value: string | null): RangeKey {
-  return value === "today" || value === "yesterday" || value === "30" ? value : "7";
-}
-
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(title)}</title><style>${CSS}</style></head><body><main>${body}</main></body></html>`;
 }
@@ -340,10 +280,6 @@ function page(title: string, body: string): string {
 export function renderLogin(message = ""): string {
   const hint = message === "" ? "输入访问口令查看匿名使用统计。" : escapeHtml(message);
   return page("插件箱子 · 使用统计", `<div class="loginWrap"><header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · anonymous usage count</p></div></div></header><section class="card loginCard"><p>${hint}</p><form method="get" action="/api/telemetry-stats"><input type="password" name="token" autofocus required placeholder="访问口令"><button type="submit">查看</button></form></section></div>`);
-}
-
-function dayLabel(day: string): string {
-  return day.slice(5);
 }
 
 function percent(value: number, total: number): string {
@@ -359,7 +295,6 @@ function niceStep(max: number): number {
   const power = 10 ** Math.floor(Math.log10(rough));
   const normalized = rough / power;
   const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  // 计数轴不能出现 0.5 这种刻度，最小步长固定为 1。
   return Math.max(1, step * power);
 }
 
@@ -371,7 +306,7 @@ function emptyState(text: string): string {
   return `<p class="emptyState">${escapeHtml(text)}</p>`;
 }
 
-/** 与上一周期相比的变化；上一周期为 0 时不显示百分比。 */
+/** 与上月相比的变化；上月为 0 时不显示百分比。 */
 function deltaChip(current: number, previous: number, label: string): string {
   if (previous <= 0) return `<span class="kpiDelta flat" title="${escapeHtml(label)}">—</span>`;
   const change = ((current - previous) / previous) * 100;
@@ -379,7 +314,7 @@ function deltaChip(current: number, previous: number, label: string): string {
   return `<span class="kpiDelta ${kind}" title="${escapeHtml(label)}">${change >= 0 ? "+" : ""}${change.toFixed(1)}%</span>`;
 }
 
-/** 横向占比条：宽度按总量归一化，不再按最大值拉满。 */
+/** 横向占比条：宽度按总量归一化。 */
 function shareRows(rows: ReadonlyArray<{ label: string; value: number }>, empty: string): string {
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   if (rows.length === 0 || total === 0) return emptyState(empty);
@@ -395,83 +330,67 @@ function topRows<T>(rows: T[], label: (row: T) => string, value: (row: T) => num
   return top;
 }
 
-/** 单日视图下方的 7 日迷你趋势。 */
-function sparkline(rows: DayRow[], highlight: string): string {
-  const width = 320;
-  const height = 56;
-  const pad = 6;
-  const max = Math.max(1, ...rows.map((row) => row.installs));
-  const xAt = (index: number): number => rows.length <= 1 ? width / 2 : pad + (index / (rows.length - 1)) * (width - pad * 2);
-  const yAt = (value: number): number => height - pad - (value / max) * (height - pad * 2);
-  const line = rows.map((row, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)} ${yAt(row.installs).toFixed(1)}`).join(" ");
-  const area = rows.length === 0 ? "" : `${line} L ${xAt(rows.length - 1).toFixed(1)} ${height - pad} L ${xAt(0).toFixed(1)} ${height - pad} Z`;
-  // 只保留选中日的点，配合 preserveAspectRatio="none" 拉满整行，避免圆点被横向拉成椭圆。
-  const dots = rows.map((row, index) => row.day === highlight ? `<circle cx="${xAt(index).toFixed(1)}" cy="${yAt(row.installs).toFixed(1)}" r="3.5" class="sparkPoint on"></circle>` : "").join("");
-  return `<svg class="spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="近 7 日活跃"><path class="sparkArea" d="${area}"/><path class="sparkLine" d="${line}"/>${dots}</svg>`;
-}
-
-/** 今日 / 昨日的紧凑单日卡。 */
-function singleDayCard(stats: Stats): string {
-  const row = stats.series[0] ?? { day: "", installs: 0, opened: 0 };
-  const noun = stats.range === "today" ? "今日" : "昨日";
-  const rate = percent(row.opened, row.installs);
-  return `<div class="singleDay"><div class="singleMain"><span class="singleLabel">${noun}活跃</span><b>${displayNumber(row.installs)}</b><span class="singleSub">打开 ${displayNumber(row.opened)} · 打开率 ${rate}</span></div><div class="singleSide">${deltaChip(row.installs, stats.previousActive, "较前一天")}<span>较前一天</span></div><div class="sparkWrap">${sparkline(stats.context, row.day)}<div class="sparkCaption">近 7 日活跃趋势</div></div></div>`;
-}
-
-/** 多日趋势：活跃面积线 + 打开细线 + 上一周期虚线。 */
+/** 本月 / 上月月度趋势；今天单独高亮。 */
 function trendChart(stats: Stats): string {
   const width = 720;
-  const height = 240;
+  const height = 300;
   const left = 42;
-  const right = 14;
-  const top = 16;
-  const bottom = 28;
+  const right = 16;
+  const top = 24;
+  const bottom = 32;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const current = stats.series;
-  const previous = stats.previous;
-  if (current.every((row) => row.installs === 0) && previous.every((row) => row.installs === 0)) {
-    return emptyState("这个区间还没有上报数据");
-  }
+  const baseline = top + plotHeight;
+  const days = stats.series.length;
+  const values = [...stats.series, ...stats.previous]
+    .map((point) => point.installs)
+    .filter((value): value is number => value !== null);
+  if (values.every((value) => value === 0)) return emptyState("本月还没有上报数据");
 
-  const max = Math.max(1, ...current.map((row) => Math.max(row.installs, row.opened)), ...previous.map((row) => row.installs));
+  const max = Math.max(1, ...values);
   const step = niceStep(max);
   const ceiling = step * 4;
-  const xAt = (index: number, length: number): number => length <= 1 ? left + plotWidth / 2 : left + (index / (length - 1)) * plotWidth;
+  const xAt = (day: number): number => left + ((day - 1) / Math.max(1, days - 1)) * plotWidth;
   const yAt = (value: number): number => top + plotHeight - (value / ceiling) * plotHeight;
-  const baseline = top + plotHeight;
   const grid = Array.from({ length: 5 }, (_, index) => {
     const value = ceiling - index * step;
     const y = yAt(value);
     return `<line class="grid" x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"/><text class="axis" x="${left - 8}" y="${y + 3}" text-anchor="end">${value}</text>`;
   }).join("");
-  const xLabels = current.map((row, index) => {
-    const stride = current.length <= 7 ? 1 : 5;
-    if (index % stride !== 0 && index !== current.length - 1) return "";
-    return `<text x="${xAt(index, current.length)}" y="${height - 8}" text-anchor="middle">${escapeHtml(dayLabel(row.day))}</text>`;
+  const labelDays = [1, 5, 10, 15, 20, 25, 30].filter((day) => day <= days);
+  if (labelDays.at(-1) !== days) labelDays.push(days);
+  const xLabels = labelDays.map((day) => `<text x="${xAt(day)}" y="${height - 8}" text-anchor="middle">${day}</text>`).join("");
+  const pathFor = (points: MonthPoint[]): string => {
+    let path = "";
+    let pen = false;
+    for (const point of points) {
+      if (point.installs === null) { pen = false; continue; }
+      path += `${pen ? "L" : "M"}${xAt(point.day).toFixed(1)} ${yAt(point.installs).toFixed(1)} `;
+      pen = true;
+    }
+    return path.trim();
+  };
+  const currentPath = pathFor(stats.series);
+  const previousPath = pathFor(stats.previous);
+  const currentPoints = stats.series.filter((point) => point.installs !== null);
+  const first = currentPoints[0];
+  const last = currentPoints.at(-1);
+  const area = first === undefined || last === undefined ? "" : `${currentPath} L ${xAt(last.day).toFixed(1)} ${baseline} L ${xAt(first.day).toFixed(1)} ${baseline} Z`;
+  const previousByDay = new Map(stats.previous.map((point) => [point.day, point.installs]));
+  const dots = currentPoints.map((point) => {
+    const previous = previousByDay.get(point.day);
+    return `<circle class="point" cx="${xAt(point.day).toFixed(1)}" cy="${yAt(point.installs ?? 0).toFixed(1)}" r="3" aria-label="${point.day} 日 · ${point.installs}" data-point="true" data-day="${escapeHtml(stats.monthLabel)} ${point.day} 日" data-value="${point.installs ?? 0}" data-opened="${point.opened ?? 0}" data-prev="${previous === null || previous === undefined ? "" : previous}"></circle>`;
   }).join("");
-  const line = (rows: number[]): string => rows.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index, rows.length)} ${yAt(value)}`).join(" ");
-  const activeValues = current.map((row) => row.installs);
-  const openedValues = current.map((row) => row.opened);
-  const previousValues = previous.map((row) => row.installs);
-  const activeLine = line(activeValues);
-  const area = `${activeLine} L ${xAt(current.length - 1, current.length)} ${baseline} L ${left} ${baseline} Z`;
-  const previousLine = previousValues.length === 0 ? "" : `<path class="previous" d="${line(previousValues)}"/>`;
-  const activeDots = current.map((row, index) => {
-    const previousValue = previous[index]?.installs;
-    return `<circle class="point" cx="${xAt(index, current.length)}" cy="${yAt(row.installs)}" r="3.5" aria-label="${escapeHtml(row.day)} · ${row.installs}" data-point="true" data-day="${escapeHtml(row.day)}" data-value="${row.installs}" data-opened="${row.opened}" data-prev="${previousValue === undefined ? "" : previousValue}"></circle>`;
-  }).join("");
-  const openedDots = current.map((row, index) => `<circle class="pointPrev" cx="${xAt(index, current.length)}" cy="${yAt(row.opened)}" r="2.4" aria-label="${escapeHtml(row.day)} · 打开 ${row.opened}"></circle>`).join("");
-  const tooltip = `<div class="chartTooltip" id="chartTooltip" hidden><div class="ttTop"><span class="ttDate" id="ttDate"></span><span class="ttDelta" id="ttDelta"></span></div><div class="ttRow"><i class="blue"></i><span>本周期活跃</span><b id="ttCurrent"></b></div><div class="ttRow"><i class="orange"></i><span>本周期打开</span><b id="ttOpened"></b></div><div class="ttRow" id="ttPrevRow2"><i class="slate"></i><span>上一周期活跃</span><b id="ttPrevious"></b></div></div>`;
-  return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="活跃与打开趋势"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><line id="chartGuide" class="guide" x1="0" y1="18" x2="0" y2="${height - 30}"/><path class="current" d="${activeLine}"/><path class="opened" d="${line(openedValues)}"/>${previousLine}${openedDots}${activeDots}</svg>${tooltip}</div>`;
+  const todayValue = stats.series.find((point) => point.day === stats.today)?.installs ?? 0;
+  const todayX = xAt(stats.today);
+  const todayMarker = `<line class="todayLine" x1="${todayX.toFixed(1)}" y1="${top}" x2="${todayX.toFixed(1)}" y2="${baseline}"></line><text class="todayLabel" x="${todayX.toFixed(1)}" y="${top - 8}" text-anchor="middle">今天</text><circle class="todayPoint" cx="${todayX.toFixed(1)}" cy="${yAt(todayValue).toFixed(1)}" r="4"></circle>`;
+  const tooltip = `<div class="chartTooltip" id="chartTooltip" hidden><div class="ttTop"><span class="ttDate" id="ttDate"></span><span class="ttDelta" id="ttDelta"></span></div><div class="ttRow"><i class="blue"></i><span>本月活跃</span><b id="ttCurrent"></b></div><div class="ttRow"><i class="orange"></i><span>本月打开</span><b id="ttOpened"></b></div><div class="ttRow" id="ttPrevRow2"><i class="slate"></i><span>上月同日</span><b id="ttPrevious"></b></div></div>`;
+  return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="本月与上月每日活跃"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><line id="chartGuide" class="guide" x1="0" y1="18" x2="0" y2="${height - 32}"></line><path class="current" d="${currentPath}"/><path class="previous" d="${previousPath}"/>${todayMarker}${dots}</svg>${tooltip}</div>`;
 }
 
-/** 趋势卡：多日画折线，单日画紧凑卡。 */
+/** 趋势卡：固定显示本月与上月，不随区间变化。 */
 function trendCard(stats: Stats): string {
-  const single = stats.series.length === 1;
-  const legend = single ? "" : `<div class="legend"><span><i class="blue"></i>本周期活跃</span><span><i class="orange"></i>本周期打开</span>${stats.previous.some((row) => row.installs > 0) ? '<span><i class="slate"></i>上一周期活跃</span>' : ""}</div>`;
-  const body = single ? singleDayCard(stats) : trendChart(stats);
-  return `<section class="card trendCard"><div class="cardHead"><div><h2>趋势分析</h2><p>${escapeHtml(stats.rangeLabel)} · 区间活跃 ${displayNumber(stats.rangeActive)}</p></div>${legend}</div>${body}</section>`;
+  return `<section class="card trendCard"><div class="cardHead"><div><h2>趋势分析</h2><p>本月每日活跃 · 今天突出显示</p></div><div class="legend"><span><i class="blue"></i>本月</span><span><i class="slate"></i>上月</span></div></div>${trendChart(stats)}</section>`;
 }
 
 /** 平台分布：横向占比条。 */
@@ -482,94 +401,83 @@ function platformCard(stats: Stats): string {
   const body = total === 0
     ? emptyState("还没有数据")
     : `<div class="stackBar">${web > 0 ? `<i class="segBlue" style="width:${(web / total * 100).toFixed(1)}%"></i>` : ""}${desktop > 0 ? `<i class="segOrange" style="width:${(desktop / total * 100).toFixed(1)}%"></i>` : ""}</div><div class="stackLegend"><div class="stackRow"><i class="dot blue"></i><span>网页端</span><b>${displayNumber(web)}</b><small>${percent(web, total)}</small></div><div class="stackRow"><i class="dot orange"></i><span>桌面端</span><b>${displayNumber(desktop)}</b><small>${percent(desktop, total)}</small></div></div>`;
-  return `<section class="card"><div class="cardHead"><div><h2>平台分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${body}</section>`;
+  return `<section class="card"><div class="cardHead"><div><h2>平台分布</h2><p>本月 · 按安装去重</p></div></div>${body}</section>`;
 }
 
 function versionCard(stats: Stats): string {
   const rows = topRows(stats.versions, (row) => `v${row.v}`, (row) => row.installs);
-  return `<section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>${escapeHtml(stats.rangeLabel)} · 同一安装跨版本可能重复计入</p></div></div>${shareRows(rows, "还没有数据")}</section>`;
+  return `<section class="card"><div class="cardHead"><div><h2>版本分布</h2><p>本月 · 同一安装跨版本可能重复计入</p></div></div>${shareRows(rows, "还没有数据")}</section>`;
 }
 
 function regionCard(stats: Stats): string {
   const rows = topRows(stats.regions, (row) => row.region === "global" ? "全球" : row.region === "china" ? "中国" : row.region, (row) => row.installs);
-  return `<section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>${escapeHtml(stats.rangeLabel)} · 按安装去重</p></div></div>${shareRows(rows, "还没有数据")}</section>`;
+  return `<section class="card"><div class="cardHead"><div><h2>区域分布</h2><p>本月 · 按安装去重</p></div></div>${shareRows(rows, "还没有数据")}</section>`;
 }
 
 function kpiCards(stats: Stats): string {
-  const noun = stats.range === "today" ? "今日" : stats.range === "yesterday" ? "昨日" : "区间";
-  const compareLabel = stats.range === "today" || stats.range === "yesterday" ? "较前一天" : "较上一周期";
   const items = [
-    { icon: "pulse", label: `${noun}活跃`, value: displayNumber(stats.rangeActive), sub: "去重安装", delta: deltaChip(stats.rangeActive, stats.previousActive, compareLabel) },
-    { icon: "eye", label: `${noun}打开`, value: displayNumber(stats.rangeOpened), sub: "去重安装", delta: "" },
-    { icon: "percent", label: "打开率", value: percent(stats.rangeOpened, stats.rangeActive), sub: "打开 ÷ 活跃", delta: "" },
-    { icon: "users", label: "日均活跃", value: displayNumber(stats.avgDaily), sub: `按 ${stats.series.length} 天平均`, delta: "" },
+    { icon: "pulse", label: "本月活跃", value: displayNumber(stats.monthActive), sub: "去重安装", delta: deltaChip(stats.monthActive, stats.lastMonthActive, "较上月") },
+    { icon: "eye", label: "本月打开", value: displayNumber(stats.monthOpened), sub: "去重安装", delta: "" },
+    { icon: "percent", label: "打开率", value: percent(stats.monthOpened, stats.monthActive), sub: "打开 ÷ 活跃", delta: "" },
+    { icon: "users", label: "日均活跃", value: displayNumber(stats.avgDaily), sub: `按 ${stats.today} 天平均`, delta: "" },
     { icon: "box", label: "累计安装", value: displayNumber(stats.total), sub: "全部时间", delta: "" },
   ];
   return items.map((item) => `<div class="kpi"><span class="kpiIcon">${kpiIcon(item.icon)}</span><div class="kpiBody"><span class="kpiLabel">${item.label}</span><div class="kpiValue"><b>${item.value}</b>${item.delta}</div><small>${item.sub}</small></div></div>`).join("");
 }
 
-function rangeTabs(active: RangeKey): string {
-  const keys: RangeKey[] = ["today", "yesterday", "7", "30"];
-  return `<nav class="tabs">${keys.map((key) => `<a class="tab${key === active ? " on" : ""}" href="?range=${key}">${RANGES[key].label}</a>`).join("")}</nav>`;
-}
-
 /** 看板主体。 */
 export function renderStats(stats: Stats, nonce = ""): string {
-  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header>${rangeTabs(stats.range)}<div class="kpis">${kpiCards(stats)}</div>${trendCard(stats)}<div class="breakdownGrid">${platformCard(stats)}${versionCard(stats)}${regionCard(stats)}</div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次，另有一次“当天打开过页面”的标记。</p>`;
+  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计 · ${escapeHtml(stats.monthLabel)}</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header><div class="kpis">${kpiCards(stats)}</div>${trendCard(stats)}<div class="breakdownGrid">${platformCard(stats)}${versionCard(stats)}${regionCard(stats)}</div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次，另有一次“当天打开过页面”的标记。</p>`;
   const script = nonce === "" ? "" : `<script nonce="${escapeHtml(nonce)}">${CHART_SCRIPT}</script>`;
   return page("插件箱子 · 使用统计", body + script);
 }
 
-function offsets(length: number, endOffset: number): string[] {
-  const end = new Date();
-  end.setUTCHours(0, 0, 0, 0);
-  end.setUTCDate(end.getUTCDate() + endOffset);
-  return Array.from({ length }, (_, index) => {
-    const date = new Date(end);
-    date.setUTCDate(end.getUTCDate() - (length - 1 - index));
-    return date.toISOString().slice(0, 10);
+/** 生成本月 1 日到月末的点；未来日期为 null。 */
+function monthSeries(rows: DayRow[], days: number, through: number): MonthPoint[] {
+  const byDay = new Map(rows.map((row) => [Number(row.day.slice(8, 10)), { installs: Number(row.installs) || 0, opened: Number(row.opened) || 0 }]));
+  return Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const row = byDay.get(day);
+    return day <= through
+      ? { day, installs: row?.installs ?? 0, opened: row?.opened ?? 0 }
+      : { day, installs: null, opened: null };
   });
 }
 
-function fillSeries(rows: DayRow[], length: number, endOffset: number): DayRow[] {
-  const byDay = new Map(rows.map((row) => [row.day, { installs: Number(row.installs) || 0, opened: Number(row.opened) || 0 }]));
-  return offsets(length, endOffset).map((day) => ({ day, installs: byDay.get(day)?.installs ?? 0, opened: byDay.get(day)?.opened ?? 0 }));
-}
-
-/** 读取所有看板数据；任何一条查询失败都会抛给调用方。 */
-export async function loadStats(db: D1Like, range: RangeKey): Promise<Stats> {
-  const config = RANGES[range];
-  const dailySql = `SELECT day, COUNT(*) AS installs, SUM(opened) AS opened FROM pings WHERE ${config.filter} GROUP BY day ORDER BY day`;
-  const previousSql = config.previousFilter
-    ? `SELECT day, COUNT(*) AS installs, SUM(opened) AS opened FROM pings WHERE ${config.previousFilter} GROUP BY day ORDER BY day`
-    : null;
-  const [daily, previous, active, opened, previousActive, total, versions, kinds, regions, contextRows] = await Promise.all([
-    db.prepare(dailySql).all<DayRow>(),
-    previousSql === null ? Promise.resolve({ results: [] as DayRow[] }) : db.prepare(previousSql).all<DayRow>(),
-    db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter}`).all<CountRow>(),
-    db.prepare(`SELECT COUNT(DISTINCT CASE WHEN opened = 1 THEN id END) AS installs FROM pings WHERE ${config.filter}`).all<CountRow>(),
-    db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.previousActiveFilter}`).all<CountRow>(),
+/** 读取本月看板数据；任何一条查询失败都会抛给调用方。 */
+export async function loadStats(db: D1Like): Promise<Stats> {
+  const monthFilter = "day >= date('now','start of month') AND day <= date('now')";
+  const lastMonthFilter = "day >= date('now','start of month','-1 month') AND day < date('now','start of month')";
+  const [current, previous, active, opened, lastActive, total, versions, kinds, regions] = await Promise.all([
+    db.prepare(`SELECT day, COUNT(*) AS installs, SUM(opened) AS opened FROM pings WHERE ${monthFilter} GROUP BY day ORDER BY day`).all<DayRow>(),
+    db.prepare(`SELECT day, COUNT(*) AS installs, SUM(opened) AS opened FROM pings WHERE ${lastMonthFilter} GROUP BY day ORDER BY day`).all<DayRow>(),
+    db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${monthFilter}`).all<CountRow>(),
+    db.prepare(`SELECT COUNT(DISTINCT CASE WHEN opened = 1 THEN id END) AS installs FROM pings WHERE ${monthFilter}`).all<CountRow>(),
+    db.prepare(`SELECT COUNT(DISTINCT id) AS installs FROM pings WHERE ${lastMonthFilter}`).all<CountRow>(),
     db.prepare("SELECT COUNT(DISTINCT id) AS installs FROM pings").all<CountRow>(),
-    db.prepare(`SELECT v, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY v ORDER BY installs DESC`).all<VersionRow>(),
-    db.prepare(`SELECT kind, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY kind ORDER BY installs DESC`).all<KindRow>(),
-    db.prepare(`SELECT region, COUNT(DISTINCT id) AS installs FROM pings WHERE ${config.filter} GROUP BY region ORDER BY installs DESC`).all<RegionRow>(),
-    db.prepare("SELECT day, COUNT(*) AS installs, SUM(opened) AS opened FROM pings WHERE day >= date('now','-7 days') GROUP BY day ORDER BY day").all<DayRow>(),
+    db.prepare(`SELECT v, COUNT(DISTINCT id) AS installs FROM pings WHERE ${monthFilter} GROUP BY v ORDER BY installs DESC`).all<VersionRow>(),
+    db.prepare(`SELECT kind, COUNT(DISTINCT id) AS installs FROM pings WHERE ${monthFilter} GROUP BY kind ORDER BY installs DESC`).all<KindRow>(),
+    db.prepare(`SELECT region, COUNT(DISTINCT id) AS installs FROM pings WHERE ${monthFilter} GROUP BY region ORDER BY installs DESC`).all<RegionRow>(),
   ]);
-  const series = fillSeries(daily.results ?? [], config.days, config.endOffset);
-  const previousSeries = config.previousFilter ? fillSeries(previous.results ?? [], config.days, config.endOffset - config.days) : [];
-  const context = fillSeries(contextRows.results ?? [], 7, config.endOffset);
-  const sum = series.reduce((acc, row) => acc + row.installs, 0);
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const today = now.getUTCDate();
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const daysInLastMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const series = monthSeries(current.results ?? [], daysInMonth, today);
+  const previousSeries = monthSeries(previous.results ?? [], daysInMonth, daysInLastMonth);
+  const sum = series.reduce((acc, point) => acc + (point.installs ?? 0), 0);
   return {
-    range,
-    rangeLabel: config.label,
-    rangeActive: Number(active.results?.[0]?.installs ?? 0),
-    rangeOpened: Number(opened.results?.[0]?.installs ?? 0),
-    previousActive: Number(previousActive.results?.[0]?.installs ?? 0),
-    avgDaily: series.length === 0 ? 0 : sum / series.length,
+    monthLabel: `${year} 年 ${month + 1} 月`,
+    monthActive: Number(active.results?.[0]?.installs ?? 0),
+    monthOpened: Number(opened.results?.[0]?.installs ?? 0),
+    lastMonthActive: Number(lastActive.results?.[0]?.installs ?? 0),
+    avgDaily: today > 0 ? sum / today : 0,
     total: Number(total.results?.[0]?.installs ?? 0),
+    today,
     series,
     previous: previousSeries,
-    context,
     versions: versions.results ?? [],
     kinds: kinds.results ?? [],
     regions: regions.results ?? [],
@@ -611,7 +519,7 @@ export async function onRequest({ request, env }: Ctx): Promise<Response> {
 
   try {
     const nonce = crypto.randomUUID().replace(/-/gu, "");
-    const stats = await loadStats(env.DB, parseRange(url.searchParams.get("range")));
+    const stats = await loadStats(env.DB);
     const headers: Record<string, string> = {};
     if (url.searchParams.has("token")) {
       headers["set-cookie"] = `${COOKIE}=${encodeURIComponent(expected)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`;
