@@ -103,12 +103,14 @@ h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.02em}
 .legend{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--muted);font-size:12px;white-space:nowrap}
 .legend i{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:5px}
 .legend .blue{background:var(--blue)}
+.legend .orange{background:var(--orange)}
 .legend .slate{background:var(--slate)}
 .chart{width:100%;height:auto;display:block}
 .chart text{font-size:10px;fill:var(--faint)}
 .chart .grid{stroke:var(--line);stroke-width:1}
 .chart .axis{fill:var(--faint)}
 .chart .current{fill:none;stroke:var(--blue);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.chart .opened{fill:none;stroke:var(--orange);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .chart .previous{fill:none;stroke:var(--slate);stroke-width:1.6;stroke-dasharray:5 5;stroke-linecap:round;stroke-linejoin:round}
 .chart .point{fill:#fff;stroke:var(--blue);stroke-width:2;pointer-events:none}
 .chart .todayLine{stroke:#94a3b8;stroke-width:1;stroke-dasharray:4 4}
@@ -333,17 +335,17 @@ function topRows<T>(rows: T[], label: (row: T) => string, value: (row: T) => num
 /** 本月 / 上月月度趋势；今天单独高亮。 */
 function trendChart(stats: Stats): string {
   const width = 720;
-  const height = 300;
+  const height = 220;
   const left = 42;
   const right = 16;
-  const top = 24;
-  const bottom = 32;
+  const top = 20;
+  const bottom = 26;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const baseline = top + plotHeight;
   const days = stats.series.length;
   const values = [...stats.series, ...stats.previous]
-    .map((point) => point.installs)
+    .flatMap((point) => [point.installs, point.opened])
     .filter((value): value is number => value !== null);
   if (values.every((value) => value === 0)) return emptyState("本月还没有上报数据");
 
@@ -360,18 +362,20 @@ function trendChart(stats: Stats): string {
   const labelDays = [1, 5, 10, 15, 20, 25, 30].filter((day) => day <= days);
   if (labelDays.at(-1) !== days) labelDays.push(days);
   const xLabels = labelDays.map((day) => `<text x="${xAt(day)}" y="${height - 8}" text-anchor="middle">${day}</text>`).join("");
-  const pathFor = (points: MonthPoint[]): string => {
+  const pathFor = (points: MonthPoint[], key: "installs" | "opened"): string => {
     let path = "";
     let pen = false;
     for (const point of points) {
-      if (point.installs === null) { pen = false; continue; }
-      path += `${pen ? "L" : "M"}${xAt(point.day).toFixed(1)} ${yAt(point.installs).toFixed(1)} `;
+      const value = point[key];
+      if (value === null) { pen = false; continue; }
+      path += `${pen ? "L" : "M"}${xAt(point.day).toFixed(1)} ${yAt(value).toFixed(1)} `;
       pen = true;
     }
     return path.trim();
   };
-  const currentPath = pathFor(stats.series);
-  const previousPath = pathFor(stats.previous);
+  const currentPath = pathFor(stats.series, "installs");
+  const openedPath = pathFor(stats.series, "opened");
+  const previousPath = pathFor(stats.previous, "installs");
   const currentPoints = stats.series.filter((point) => point.installs !== null);
   const first = currentPoints[0];
   const last = currentPoints.at(-1);
@@ -383,14 +387,14 @@ function trendChart(stats: Stats): string {
   }).join("");
   const todayValue = stats.series.find((point) => point.day === stats.today)?.installs ?? 0;
   const todayX = xAt(stats.today);
-  const todayMarker = `<line class="todayLine" x1="${todayX.toFixed(1)}" y1="${top}" x2="${todayX.toFixed(1)}" y2="${baseline}"></line><text class="todayLabel" x="${todayX.toFixed(1)}" y="${top - 8}" text-anchor="middle">今天</text><circle class="todayPoint" cx="${todayX.toFixed(1)}" cy="${yAt(todayValue).toFixed(1)}" r="4"></circle>`;
+  const todayMarker = `<line class="todayLine" x1="${todayX.toFixed(1)}" y1="${top}" x2="${todayX.toFixed(1)}" y2="${baseline}"></line><text class="todayLabel" x="${todayX.toFixed(1)}" y="${top - 7}" text-anchor="middle">今天</text><circle class="todayPoint" cx="${todayX.toFixed(1)}" cy="${yAt(todayValue).toFixed(1)}" r="4"></circle>`;
   const tooltip = `<div class="chartTooltip" id="chartTooltip" hidden><div class="ttTop"><span class="ttDate" id="ttDate"></span><span class="ttDelta" id="ttDelta"></span></div><div class="ttRow"><i class="blue"></i><span>本月活跃</span><b id="ttCurrent"></b></div><div class="ttRow"><i class="orange"></i><span>本月打开</span><b id="ttOpened"></b></div><div class="ttRow" id="ttPrevRow2"><i class="slate"></i><span>上月同日</span><b id="ttPrevious"></b></div></div>`;
-  return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="本月与上月每日活跃"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><line id="chartGuide" class="guide" x1="0" y1="18" x2="0" y2="${height - 32}"></line><path class="current" d="${currentPath}"/><path class="previous" d="${previousPath}"/>${todayMarker}${dots}</svg>${tooltip}</div>`;
+  return `<div class="chartWrap"><svg id="trendChart" class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="本月与上月每日活跃"><defs><linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".22"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient></defs>${grid}${xLabels}<path d="${area}" fill="url(#areaBlue)"/><line id="chartGuide" class="guide" x1="0" y1="18" x2="0" y2="${height - 26}"></line><path class="opened" d="${openedPath}"/><path class="current" d="${currentPath}"/><path class="previous" d="${previousPath}"/>${todayMarker}${dots}</svg>${tooltip}</div>`;
 }
 
 /** 趋势卡：固定显示本月与上月，不随区间变化。 */
 function trendCard(stats: Stats): string {
-  return `<section class="card trendCard"><div class="cardHead"><div><h2>趋势分析</h2><p>本月每日活跃 · 今天突出显示</p></div><div class="legend"><span><i class="blue"></i>本月</span><span><i class="slate"></i>上月</span></div></div>${trendChart(stats)}</section>`;
+  return `<section class="card trendCard"><div class="cardHead"><div><h2>趋势分析</h2><p>本月每日活跃与打开 · 今天突出显示</p></div><div class="legend"><span><i class="blue"></i>本月活跃</span><span><i class="orange"></i>本月打开</span><span><i class="slate"></i>上月活跃</span></div></div>${trendChart(stats)}</section>`;
 }
 
 /** 平台分布：横向占比条。 */
