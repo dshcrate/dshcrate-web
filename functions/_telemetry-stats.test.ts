@@ -59,6 +59,7 @@ test("renders the monthly dashboard sections and escaped labels", () => {
   assert.match(html, /ttOpened/);
   assert.match(html, /<script nonce="test-nonce">/);
   assert.match(html, /2026 年 11 月/);
+  assert.match(html, /北京时间/);
   assert.match(html, /75\.0%/);
   assert.match(html, /25\.0%/);
   assert.match(html, /&lt;bad&gt;/);

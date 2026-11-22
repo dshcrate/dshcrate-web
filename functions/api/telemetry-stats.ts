@@ -427,9 +427,24 @@ function kpiCards(stats: Stats): string {
 
 /** 看板主体。 */
 export function renderStats(stats: Stats, nonce = ""): string {
-  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计 · ${escapeHtml(stats.monthLabel)}</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} UTC</span><a href="?logout=1">退出查看</a></div></header><div class="kpis">${kpiCards(stats)}</div>${trendCard(stats)}<div class="breakdownGrid">${platformCard(stats)}${versionCard(stats)}${regionCard(stats)}</div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次，另有一次“当天打开过页面”的标记。</p>`;
+  const body = `<header class="topbar"><div class="brand"><div><h1>使用统计</h1><p class="sub">插件箱子 · 匿名使用统计 · ${escapeHtml(stats.monthLabel)}</p></div></div><div class="meta"><span>更新于 ${escapeHtml(stats.updatedAt)} 北京时间</span><a href="?logout=1">退出查看</a></div></header><div class="kpis">${kpiCards(stats)}</div>${trendCard(stats)}<div class="breakdownGrid">${platformCard(stats)}${versionCard(stats)}${regionCard(stats)}</div><p class="note">只统计主动开启匿名统计的安装；插件默认开启，可随时关闭。每个安装每个 UTC 日最多计一次，另有一次“当天打开过页面”的标记。</p>`;
   const script = nonce === "" ? "" : `<script nonce="${escapeHtml(nonce)}">${CHART_SCRIPT}</script>`;
   return page("插件箱子 · 使用统计", body + script);
+}
+
+/** 看板展示用北京时间（UTC+8），与数据按 UTC 日归档无关。 */
+function beijingNow(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
 /** 生成本月 1 日到月末的点；未来日期为 null。 */
@@ -481,7 +496,7 @@ export async function loadStats(db: D1Like): Promise<Stats> {
     versions: versions.results ?? [],
     kinds: kinds.results ?? [],
     regions: regions.results ?? [],
-    updatedAt: new Date().toISOString().replace("T", " ").slice(0, 16),
+    updatedAt: beijingNow(),
   };
 }
 
