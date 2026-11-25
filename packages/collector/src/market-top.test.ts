@@ -60,8 +60,18 @@ test("pickMarketTop：分数相同时按星数、再按 id 稳定排序", () => 
 test("pickMarketTop：只保留市场面板要用的字段", () => {
   const picked = pickMarketTop([entry("a/one", 80, { descriptionZh: "中文简介" })], 1)[0];
   assert.ok(picked);
-  assert.deepEqual(Object.keys(picked).sort(), ["cmd", "d", "g", "i", "n", "s", "sc", "t", "vr"]);
+  assert.deepEqual(Object.keys(picked).sort(), ["a", "cmd", "d", "g", "i", "n", "s", "sc", "t", "vr"]);
   assert.equal(picked.d, "中文简介");
+});
+
+test("pickMarketTop：带上首次收录时间，供客户端做最近收录与排序", () => {
+  const picked = pickMarketTop([entry("a/one", 80, { firstSeenAt: "2026-11-20T08:00:00.000Z" })], 1)[0];
+  assert.equal(picked?.a, "2026-11-20T08:00:00.000Z");
+});
+
+test("pickMarketTop：首次收录时间为空时原样保留，由客户端决定是否忽略", () => {
+  const picked = pickMarketTop([entry("a/one", 80, { firstSeenAt: "" })], 1)[0];
+  assert.equal(picked?.a, "");
 });
 
 test("pickMarketTop：没有中文简介时回落到上游简介", () => {
@@ -137,6 +147,7 @@ test("writeMarketAll：落盘 dsh-crate.json 并保留 dsh-shelfry.json 兼容�
     assert.equal(typeof payload.schemaVersion, "number");
     assert.equal(typeof payload.generatedAt, "string");
     assert.deepEqual(payload.entries.map((e) => e.i), ["b/two", "c/three", "a/one"]);
+    assert.equal(payload.entries[0]?.a, "2026-01-01T00:00:00.000Z");
     // 旧文件名必须同时存在，0.4.x 客户端还在读它
     const legacy = JSON.parse(readFileSync(join(dir, "dsh-shelfry.json"), "utf8")) as MarketFile;
     assert.deepEqual(legacy.entries.map((e) => e.i), payload.entries.map((e) => e.i));

@@ -237,6 +237,7 @@ function toMarketEntry(e: PluginEntry): MarketEntry {
     vr: e.version,
     g: e.install.enginesDsh,
     cmd: e.install.command,
+    a: e.firstSeenAt,
   };
 }
 

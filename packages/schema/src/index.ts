@@ -117,6 +117,7 @@ export interface MarketEntry {
   /** 插件自身版本 */ vr: string | null;
   /** engines.dsh */ g: string | null;
   /** 我方规范化安装命令 */ cmd: string | null;
+  /** 我方首次收录时间（ISO）；客户端用它做「最近收录」与收录时间排序 */ a: string;
 }
 
 /** 市场切片文件（data/market-top.json 与全量的 data/dsh-crate.json 共用此结构）。 */
