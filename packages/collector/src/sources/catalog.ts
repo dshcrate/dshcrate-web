@@ -153,6 +153,27 @@ export async function fetchCatalogIndex(): Promise<CatalogIndex | null> {
 }
 
 /**
+ * 把目录的精选图标与截图补到所有已有条目上。
+ *
+ * mergeCatalog 只作用于「本轮新发现的候选」，因此已有条目永远拿不到目录后来新增的
+ * 图片字段；这里按 id 做一次全量回填，已有非空值优先保留。
+ */
+export function enrichCatalogMedia<T extends { id: string; icon?: string | null; screenshots?: string[] }>(
+  entries: T[],
+  items: CatalogItem[],
+): T[] {
+  const byKey = new Map(items.map(item => [item.key, item]));
+  return entries.map(entry => {
+    const item = byKey.get(entry.id.toLowerCase());
+    if (item === undefined) return entry;
+    const icon = entry.icon ?? item.icon;
+    const screenshots = (entry.screenshots?.length ?? 0) > 0 ? entry.screenshots : item.screenshots;
+    if (icon === entry.icon && screenshots === entry.screenshots) return entry;
+    return { ...entry, icon, screenshots };
+  });
+}
+
+/**
  * 把目录字段并进 GitHub 详情：中文简介、安装命令、标签兜底。
  * 只保留 GitHub 成功取回的仓库 —— 已删除的仓库不会被带进站点。
  */

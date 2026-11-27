@@ -19,7 +19,7 @@ import {
 import { isUsableInstallSpec, normalizeRecord, type RawRecord } from "./normalize.ts";
 import { fetchMirrorRecords } from "./sources/mirror.ts";
 import { fetchGithubRecords, fetchReposByNames } from "./sources/github.ts";
-import { fetchCatalogIndex, mergeCatalog } from "./sources/catalog.ts";
+import { enrichCatalogMedia, fetchCatalogIndex, mergeCatalog, type CatalogItem } from "./sources/catalog.ts";
 import { resolveVersions } from "./versions.ts";
 import { resolveDownloads } from "./downloads.ts";
 import { writeOfficialIndex } from "./market-index.ts";
@@ -192,6 +192,8 @@ async function main(): Promise<void> {
   // 一次性补录：CI 用 workflow_dispatch 的 rescue 输入传入仓库全名，逐条取详情后并入本轮。
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "";
   const curation = loadCuration();
+  /** 本轮目录索引：除了发现新仓库，还要给已有条目回填精选图标与截图。 */
+  let catalogItems: CatalogItem[] = [];
 
   // 第三方目录源（awesome-dsh-plugin）：只补我们还没有的仓库。目录不决定是否入库 ——
   // 已删除的仓库由 GitHub API 天然挡掉，星标/标签/质量门槛仍走后面的统一规则。
@@ -201,6 +203,7 @@ async function main(): Promise<void> {
   } else {
     const catalog = await fetchCatalogIndex();
     if (catalog) {
+      catalogItems = catalog.items;
       const known = new Set(prev.entries.map((e) => e.id.toLowerCase()));
       const taken = new Set(records.map((r) => String(r.id ?? r.fullName ?? "").toLowerCase()));
       const manual = new Set([...curation.queue, ...curation.curated, ...curation.blocklist, ...curation.purge]);
@@ -277,6 +280,11 @@ async function main(): Promise<void> {
 
   const merged = mergeEntries(prev, incoming);
   let entries = merged.catalog.entries;
+  // 目录里的精选图片要覆盖所有已有条目，而不只是本轮新发现的候选。
+  if (catalogItems.length > 0) {
+    entries = enrichCatalogMedia(entries, catalogItems);
+    merged.catalog.entries = entries;
+  }
 
   // 站长永久剔除的仓库 + 规则批量清退的仓库。队列优先：同一仓库同时出现在两边时
   // 按「要收录」处理，恢复收录只需把它加回队列，不必关心两份名单里是否还留着旧记录。

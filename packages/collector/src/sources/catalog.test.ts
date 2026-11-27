@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { RawRecord } from "../normalize.ts";
-import { mergeCatalog, parseCatalogIndex, parseGithubRepo } from "./catalog.ts";
+import { enrichCatalogMedia, mergeCatalog, parseCatalogIndex, parseGithubRepo } from "./catalog.ts";
 
 /** 目录原始 JSON 的最小形状：只填判定用到的字段。 */
 const index = (plugins: unknown[], categories: unknown = { ui: { zh: "UI 增强", en: "UI" } }) => ({
@@ -96,6 +96,34 @@ test("parseCatalogIndex：缺图标与截图时留空", () => {
   const parsed = parseCatalogIndex(index([plugin()]));
   assert.equal(parsed.items[0]?.icon, null);
   assert.deepEqual(parsed.items[0]?.screenshots, []);
+});
+
+test("enrichCatalogMedia：给已有条目回填图标与截图，其他条目原样保留", () => {
+  const icon = "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png";
+  const shots = ["https://raw.githubusercontent.com/acme/dsh-demo/main/a.png"];
+  const items = parseCatalogIndex(index([plugin({ icon, screenshots: shots })])).items;
+  const entries: Array<{ id: string; icon?: string | null; screenshots?: string[] }> = [
+    { id: "acme/dsh-demo" },
+    { id: "other/repo" },
+  ];
+  const out = enrichCatalogMedia(entries, items);
+  assert.equal(out[0]?.icon, icon);
+  assert.deepEqual(out[0]?.screenshots, shots);
+  assert.deepEqual(out[1], { id: "other/repo" });
+});
+
+test("enrichCatalogMedia：已有图片优先，不被目录覆盖", () => {
+  const items = parseCatalogIndex(index([plugin({
+    icon: "https://raw.githubusercontent.com/acme/dsh-demo/main/new.png",
+    screenshots: ["https://raw.githubusercontent.com/acme/dsh-demo/main/new-shot.png"],
+  })])).items;
+  const existing = [{
+    id: "acme/dsh-demo",
+    icon: "https://raw.githubusercontent.com/acme/dsh-demo/main/old.png",
+    screenshots: ["https://raw.githubusercontent.com/acme/dsh-demo/main/old-shot.png"],
+  }];
+  const [out] = enrichCatalogMedia(existing, items);
+  assert.deepEqual(out, existing[0]);
 });
 
 test("mergeCatalog：图标与精选截图并入记录", () => {
