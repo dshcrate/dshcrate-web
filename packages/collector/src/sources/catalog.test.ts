@@ -76,6 +76,38 @@ test("parseCatalogIndex：结构异常时返回空索引，不抛错", () => {
   assert.equal(parseCatalogIndex(index(["bad-row"])).items.length, 0);
 });
 
+test("parseCatalogIndex：保留精选图标与截图，只收 https、去重且最多 3 张", () => {
+  const a = "https://raw.githubusercontent.com/acme/dsh-demo/main/a.png";
+  const c = "https://raw.githubusercontent.com/acme/dsh-demo/main/c.png";
+  const d = "https://raw.githubusercontent.com/acme/dsh-demo/main/d.png";
+  const parsed = parseCatalogIndex(
+    index([
+      plugin({
+        icon: "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png",
+        screenshots: [a, "http://insecure.example/b.png", a, c, d],
+      }),
+    ]),
+  );
+  assert.equal(parsed.items[0]?.icon, "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png");
+  assert.deepEqual(parsed.items[0]?.screenshots, [a, c, d]);
+});
+
+test("parseCatalogIndex：缺图标与截图时留空", () => {
+  const parsed = parseCatalogIndex(index([plugin()]));
+  assert.equal(parsed.items[0]?.icon, null);
+  assert.deepEqual(parsed.items[0]?.screenshots, []);
+});
+
+test("mergeCatalog：图标与精选截图并入记录", () => {
+  const items = parseCatalogIndex(index([plugin({
+    icon: "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png",
+    screenshots: ["https://raw.githubusercontent.com/acme/dsh-demo/main/a.png"],
+  })])).items;
+  const [record] = mergeCatalog([gh()], items);
+  assert.equal(record?.icon, "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png");
+  assert.deepEqual(record?.screenshots, ["https://raw.githubusercontent.com/acme/dsh-demo/main/a.png"]);
+});
+
 test("mergeCatalog：topics 非空时保留 topics，不写分类名", () => {
   const items = parseCatalogIndex(index([plugin()])).items;
   const [record] = mergeCatalog([gh({ tags: ["dsh", "notes"] })], items);

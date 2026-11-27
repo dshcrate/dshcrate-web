@@ -47,6 +47,30 @@ test("isThemeRepo：fullName 没有斜杠时退回 name 判断", () => {
   assert.equal(isThemeRepo("plain", "plain", []), false);
 });
 
+test("normalizeRecord：保留精选图标与截图，过滤非 https 且最多 3 张", () => {
+  const a = "https://raw.githubusercontent.com/o/a/main/a.png";
+  const c = "https://raw.githubusercontent.com/o/a/main/c.png";
+  const d = "https://raw.githubusercontent.com/o/a/main/d.png";
+  const entry = normalizeRecord(
+    raw({
+      icon: "https://raw.githubusercontent.com/o/a/main/icon.png",
+      screenshots: [a, "http://insecure.example/b.png", c, d, "https://raw.githubusercontent.com/o/a/main/e.png"],
+    }),
+    new Date("2026-11-03T00:00:00Z"),
+  );
+  assert.equal(entry?.icon, "https://raw.githubusercontent.com/o/a/main/icon.png");
+  assert.deepEqual(entry?.screenshots, [a, c, d]);
+});
+
+test("normalizeRecord：本轮没有精选图片时沿用上一轮", () => {
+  const icon = "https://raw.githubusercontent.com/o/a/main/icon.png";
+  const shots = ["https://raw.githubusercontent.com/o/a/main/a.png"];
+  const first = normalizeRecord(raw({ icon, screenshots: shots }), new Date("2026-11-03T00:00:00Z"));
+  const second = normalizeRecord(raw(), new Date("2026-11-04T00:00:00Z"), first ?? undefined);
+  assert.equal(second?.icon, icon);
+  assert.deepEqual(second?.screenshots, shots);
+});
+
 test("normalizeRecord：普通插件命中主题线索后归为 theme", () => {
   const entry = normalizeRecord(raw({ tags: ["dsh-theme"] }), new Date("2026-11-03T00:00:00Z"));
   assert.equal(entry?.type, "theme");

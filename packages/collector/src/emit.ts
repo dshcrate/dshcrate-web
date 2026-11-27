@@ -238,6 +238,8 @@ function toMarketEntry(e: PluginEntry): MarketEntry {
     g: e.install.enginesDsh,
     cmd: e.install.command,
     a: e.firstSeenAt,
+    ...(e.icon ? { ic: e.icon } : {}),
+    ...(e.screenshots !== undefined && e.screenshots.length > 0 ? { sh: e.screenshots } : {}),
   };
 }
 

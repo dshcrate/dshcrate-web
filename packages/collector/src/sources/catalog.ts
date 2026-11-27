@@ -23,6 +23,10 @@ export interface CatalogItem {
   descriptionZh: string | null;
   /** 分类中文名，仅在 GitHub topics 为空时作兜底标签 */
   categoryTag: string | null;
+  /** 目录给的精选图标（https），没有为 null */
+  icon: string | null;
+  /** 目录给的精选截图（https，最多 3 张），没有为空数组 */
+  screenshots: string[];
 }
 
 export interface CatalogIndex {
@@ -52,6 +56,27 @@ export function parseGithubRepo(url: unknown): string | null {
 const unquote = (command: string): string => command.replace(/"([^"]+)"/g, "$1");
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** 图片只收 https；http、data:、相对路径一律丢弃。 */
+const httpsUrl = (v: unknown): string | null => {
+  const text = str(v);
+  return text !== null && /^https:\/\//i.test(text) ? text : null;
+};
+
+/** 精选截图按原顺序去重、只留 https，最多 3 张；上游已是人工精选，不再猜内容。 */
+const shotList = (v: unknown): string[] => {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of v) {
+    const url = httpsUrl(item);
+    if (url === null || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+    if (out.length === 3) break;
+  }
+  return out;
+};
 
 /** 顶层 categories 字典 → 分类中文名，目录以后加分类不用改代码。 */
 function parseCategories(raw: unknown): Map<string, string> {
@@ -98,6 +123,8 @@ export function parseCatalogIndex(raw: unknown): CatalogIndex {
       command: unquote(command),
       descriptionZh: str(desc.zh),
       categoryTag: category ? labels.get(category) ?? null : null,
+      icon: httpsUrl(r.icon),
+      screenshots: shotList(r.screenshots),
     });
   }
 
@@ -142,6 +169,8 @@ export function mergeCatalog(ghRecords: RawRecord[], items: CatalogItem[]): RawR
       ...gh,
       descriptionZh: item.descriptionZh ?? gh.descriptionZh ?? null,
       tags,
+      icon: item.icon ?? gh.icon ?? null,
+      screenshots: item.screenshots.length > 0 ? item.screenshots : gh.screenshots,
       install: { method: "pnpm-profile", commands: [item.command] },
       sources: [...new Set([...prevSources, "awesome-catalog"])],
     });

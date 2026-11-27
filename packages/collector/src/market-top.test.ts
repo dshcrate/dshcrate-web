@@ -74,6 +74,17 @@ test("pickMarketTop：首次收录时间为空时原样保留，由客户端决�
   assert.equal(picked?.a, "");
 });
 
+test("pickMarketTop：精选图标与截图输出为 ic / sh，缺失时不输出", () => {
+  const icon = "https://raw.githubusercontent.com/acme/dsh-demo/main/icon.png";
+  const shots = ["https://raw.githubusercontent.com/acme/dsh-demo/main/a.png"];
+  const withMedia = pickMarketTop([entry("a/one", 80, { icon, screenshots: shots })], 1)[0];
+  assert.equal(withMedia?.ic, icon);
+  assert.deepEqual(withMedia?.sh, shots);
+  const bare = pickMarketTop([entry("a/two", 80)], 1)[0];
+  assert.equal(bare !== undefined && "ic" in bare, false);
+  assert.equal(bare !== undefined && "sh" in bare, false);
+});
+
 test("pickMarketTop：没有中文简介时回落到上游简介", () => {
   const picked = pickMarketTop([entry("a/one", 80)], 1)[0];
   assert.equal(picked?.d, "上游简介");

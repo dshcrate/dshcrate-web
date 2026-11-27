@@ -76,6 +76,10 @@ export interface PluginEntry {
   updatedAt: string;
   /** README 首段摘要：只给上游没写简介的条目补，用于前端分类兜底。 */
   readmeSummary?: string;
+  /** 上游目录给的图标（https）；缺失时卡片回退到 owner 头像。 */
+  icon?: string | null;
+  /** 上游目录给的精选截图（https，按展示顺序，最多 3 张）；没有就留空。 */
+  screenshots?: string[];
 }
 
 /** 浏览切片（首屏用）：短键名压体积，全站 13k 条也要足够小。 */
@@ -118,6 +122,8 @@ export interface MarketEntry {
   /** engines.dsh */ g: string | null;
   /** 我方规范化安装命令 */ cmd: string | null;
   /** 我方首次收录时间（ISO）；客户端用它做「最近收录」与收录时间排序 */ a: string;
+  /** 图标（https）；仅精选数据有值时输出 */ ic?: string;
+  /** 精选截图（https，最多 3 张）；仅精选数据有值时输出 */ sh?: string[];
 }
 
 /** 市场切片文件（data/market-top.json 与全量的 data/dsh-crate.json 共用此结构）。 */

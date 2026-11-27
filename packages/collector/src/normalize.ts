@@ -20,6 +20,8 @@ export interface RawRecord {
   curated?: unknown;
   homepage?: unknown;
   pushedAt?: unknown;
+  icon?: unknown;
+  screenshots?: unknown;
   install?: unknown;
   sources?: unknown;
 }
@@ -170,6 +172,9 @@ export function normalizeRecord(raw: RawRecord, now: Date, prev?: PluginEntry): 
   const type: PluginType =
     baseType === "cordis-plugin" && isThemeRepo(fullName, name, tags) ? "theme" : baseType;
 
+  // 精选截图只收 https、最多 3 张；本轮目录源没给时沿用上一轮，避免一次拉取失败清空图片。
+  const nextShots = strArr(raw.screenshots).filter(url => /^https:\/\//i.test(url)).slice(0, 3);
+
   const entry: PluginEntry = {
     id,
     name,
@@ -185,6 +190,8 @@ export function normalizeRecord(raw: RawRecord, now: Date, prev?: PluginEntry): 
     curated: bool(raw.curated),
     homepage: str(raw.homepage),
     pushedAt: str(raw.pushedAt),
+    icon: str(raw.icon) ?? prev?.icon ?? null,
+    screenshots: nextShots.length > 0 ? nextShots : (prev?.screenshots ?? []),
     // 版本号由 versions.ts 事后从 npm registry 补全，镜像与检索结果里都没有。
     version: prev?.version ?? null,
     // 下载量同样事后补全；复用上一轮结论，避免每次全量重查。
